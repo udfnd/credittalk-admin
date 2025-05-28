@@ -75,9 +75,25 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { session } } = await supabase.auth.getSession();
+  const pathname = request.nextUrl.pathname; // 현재 경로 가져오기
 
-  // /admin 경로 접근 시
-  if (request.nextUrl.pathname.startsWith('/admin')) {
+  if (pathname === '/') {
+    if (session) {
+      const userIsAdmin = await isAdmin(supabase);
+      if (userIsAdmin) {
+        return NextResponse.redirect(new URL('/admin', request.url));
+      } else {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+    } else {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+  // ======================================
+
+  // /admin 경로 접근 시 (기존 로직)
+  if (pathname.startsWith('/admin')) {
     if (!session) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
@@ -85,13 +101,12 @@ export async function middleware(request: NextRequest) {
     const userIsAdmin = await isAdmin(supabase);
 
     if (!userIsAdmin) {
-      console.warn(`Non-admin user (${session?.user?.email ?? 'Unknown'}) tried to access /admin`);
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
 
-  // 로그인 페이지 접근 시, 이미 로그인했다면 어드민 페이지로
-  if (request.nextUrl.pathname === '/login' && session) {
+  // 로그인 페이지 접근 시 (기존 로직)
+  if (pathname === '/login' && session) {
     const userIsAdmin = await isAdmin(supabase);
     if (userIsAdmin) {
       return NextResponse.redirect(new URL('/admin', request.url));
@@ -104,7 +119,5 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico).*)',
-    '/admin/:path*',
-    '/login',
   ],
 }
