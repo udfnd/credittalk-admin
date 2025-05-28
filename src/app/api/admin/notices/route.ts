@@ -1,10 +1,11 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server'; // 인증 확인용
 import { NextResponse } from 'next/server';
+import { cookies } from "next/headers";
 
 async function isAdmin(request: Request): Promise<boolean> {
-  // 서버 컴포넌트용 클라이언트를 사용하여 쿠키 기반으로 세션 확인
-  const supabase = createClient();
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
