@@ -36,8 +36,15 @@ export default function NoticeForm() {
 
       setMessage({ type: 'success', text: 'Notice created successfully!' });
       reset();
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message });
+    } catch (err) {
+      console.error('Form Error:', err);
+      let errorMessage = 'An unknown error occurred';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      setMessage({ type: 'error', text: errorMessage });
     }
   };
 

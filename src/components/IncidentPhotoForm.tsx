@@ -37,7 +37,7 @@ export default function IncidentPhotoForm() {
     try {
       const response = await fetch('/api/admin/incident-photos', {
         method: 'POST',
-        body: formData, // FormData를 직접 전송 (Content-Type 설정 불필요)
+        body: formData,
       });
 
       if (!response.ok) {
@@ -47,8 +47,15 @@ export default function IncidentPhotoForm() {
 
       setMessage({ type: 'success', text: 'Incident photo uploaded successfully!' });
       reset();
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message });
+    } catch (err) {
+      console.error('Upload Error:', err);
+      let errorMessage = 'An unknown error occurred';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      setMessage({ type: 'error', text: errorMessage });
     }
   };
 
