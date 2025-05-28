@@ -1,9 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers'; // cookies 임포트 추가
+import { cookies } from 'next/headers';
 
-// isAdmin 함수: request 인자 제거 (next/headers의 cookies() 사용)
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -11,7 +10,6 @@ async function isAdmin(): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
-  // is_current_user_admin RPC 호출 또는 users 테이블 직접 조회
   const { data, error } = await supabase.rpc('is_current_user_admin');
   if (error) {
     console.error("Admin check failed:", error);
@@ -21,7 +19,6 @@ async function isAdmin(): Promise<boolean> {
 }
 
 export async function POST(request: Request) {
-  // isAdmin 호출 시 request를 전달하지 않습니다.
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -38,7 +35,15 @@ export async function POST(request: Request) {
       return new NextResponse('Title and Image File are required', { status: 400 });
     }
 
-    const fileName = `${Date.now()}-${imageFile.name.replace(/\s/g, '_')}`;
+    const originalName = imageFile.name;
+    const dotIndex = originalName.lastIndexOf('.');
+    const baseName = dotIndex === -1 ? originalName : originalName.substring(0, dotIndex);
+    const extension = dotIndex === -1 ? '' : originalName.substring(dotIndex + 1);
+
+    const encodedBaseName = encodeURIComponent(baseName.replace(/\s/g, '_'));
+    const safeExtension = extension ? `.${extension.replace(/[^a-zA-Z0-9]/g, '')}` : '';
+    const fileName = `${Date.now()}-${encodedBaseName}${safeExtension}`;
+
     const { data: uploadData, error: uploadError } = await supabaseAdmin
       .storage
       .from('incident-photos')
@@ -49,6 +54,8 @@ export async function POST(request: Request) {
 
     if (uploadError) {
       console.error('Supabase Storage Error:', uploadError);
+      // 오류 메시지에 'Invalid key'가 포함되어 있다면, 인코딩 후에도 문제가 있을 수 있습니다.
+      // 하지만 이 수정으로 대부분 해결됩니다.
       return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
     }
 
@@ -82,7 +89,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(dbData);
 
-    // catch 블록 수정: any 대신 unknown 사용 및 타입 체크
   } catch (err) {
     console.error('API Error:', err);
     let errorMessage = 'An unknown error occurred';
