@@ -36,13 +36,9 @@ export async function POST(request: Request) {
     }
 
     const originalName = imageFile.name;
-    const dotIndex = originalName.lastIndexOf('.');
-    const baseName = dotIndex === -1 ? originalName : originalName.substring(0, dotIndex);
-    const extension = dotIndex === -1 ? '' : originalName.substring(dotIndex + 1);
-
-    const encodedBaseName = encodeURIComponent(baseName.replace(/\s/g, '_'));
-    const safeExtension = extension ? `.${extension.replace(/[^a-zA-Z0-9]/g, '')}` : '';
-    const fileName = `${Date.now()}-${encodedBaseName}${safeExtension}`;
+    const extension = originalName.split('.').pop() || ''; // 원본 확장자 가져오기
+    const fileName = `<span class="math-inline">\{uuidv4\(\)\}</span>{safeExtension}`;
+    console.log("Uploading file with key:", fileName);
 
     const { data: uploadData, error: uploadError } = await supabaseAdmin
       .storage
@@ -54,8 +50,6 @@ export async function POST(request: Request) {
 
     if (uploadError) {
       console.error('Supabase Storage Error:', uploadError);
-      // 오류 메시지에 'Invalid key'가 포함되어 있다면, 인코딩 후에도 문제가 있을 수 있습니다.
-      // 하지만 이 수정으로 대부분 해결됩니다.
       return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
     }
 
