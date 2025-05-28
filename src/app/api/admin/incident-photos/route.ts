@@ -36,7 +36,6 @@ export async function POST(request: Request) {
     }
 
     const originalName = imageFile.name;
-    const extension = originalName.split('.').pop() || ''; // 원본 확장자 가져오기
     const fileName = `<span class="math-inline">\{uuidv4\(\)\}</span>{safeExtension}`;
     console.log("Uploading file with key:", fileName);
 
