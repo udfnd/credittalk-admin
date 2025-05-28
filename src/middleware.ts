@@ -1,7 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { SupabaseClient } from '@supabase/supabase-js'
 
-async function isAdmin(supabase: any): Promise<boolean> { // 'supabase: any'도 수정하면 좋지만, 일단 내부 로직부터
+async function isAdmin(supabase: SupabaseClient): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
@@ -37,7 +38,6 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
-          // 쿠키 설정 시 try...catch 제거
           request.cookies.set({
             name,
             value,
@@ -55,7 +55,6 @@ export async function middleware(request: NextRequest) {
           })
         },
         remove(name: string, options: CookieOptions) {
-          // 쿠키 삭제 시 try...catch 제거
           request.cookies.set({
             name,
             value: '',
@@ -83,11 +82,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // isAdmin 호출 시 supabase 클라이언트를 전달합니다.
     const userIsAdmin = await isAdmin(supabase);
 
     if (!userIsAdmin) {
-      console.warn(`Non-admin user (${session.user.email}) tried to access /admin`);
+      console.warn(`Non-admin user (${session?.user?.email ?? 'Unknown'}) tried to access /admin`);
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
