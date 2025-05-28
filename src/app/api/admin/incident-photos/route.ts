@@ -35,7 +35,6 @@ export async function POST(request: Request) {
       return new NextResponse('Title and Image File are required', { status: 400 });
     }
 
-    const originalName = imageFile.name;
     const fileName = `<span class="math-inline">\{uuidv4\(\)\}</span>{safeExtension}`;
     console.log("Uploading file with key:", fileName);
 
