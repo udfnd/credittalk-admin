@@ -61,7 +61,7 @@ export default function IncidentPhotoForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="p-6 bg-white rounded-lg shadow-md space-y-4">
-      <h2 className="text-xl font-semibold text-gray-900">Upload New Incident Photo</h2>
+      <h2 className="text-xl font-semibold text-gray-900">사건 사진자료 작성</h2>
 
       {message && (
         <div className={`p-3 rounded ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -70,7 +70,7 @@ export default function IncidentPhotoForm() {
       )}
 
       <div>
-        <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
+        <label htmlFor="title" className="block text-sm font-medium text-gray-700">제목</label>
         <input
           id="title"
           {...register('title', { required: 'Title is required' })}
@@ -80,7 +80,7 @@ export default function IncidentPhotoForm() {
       </div>
 
       <div>
-        <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">Image File</label>
+        <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">이미지 파일</label>
         <input
           id="imageFile"
           type="file"
@@ -92,7 +92,7 @@ export default function IncidentPhotoForm() {
       </div>
 
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description (Optional)</label>
+        <label htmlFor="description" className="block text-sm font-medium text-gray-700">설명</label>
         <textarea
           id="description"
           rows={3}
@@ -102,7 +102,7 @@ export default function IncidentPhotoForm() {
       </div>
 
       <div>
-        <label htmlFor="category" className="block text-sm font-medium text-gray-700">Category (Optional)</label>
+        <label htmlFor="category" className="block text-sm font-medium text-gray-700">카테고리</label>
         <input
           id="category"
           {...register('category')}
@@ -117,7 +117,7 @@ export default function IncidentPhotoForm() {
           {...register('is_published')}
           className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
         />
-        <label htmlFor="is_published" className="ml-2 block text-sm text-gray-900">Publish Immediately</label>
+        <label htmlFor="is_published" className="ml-2 block text-sm text-gray-900">즉시 업로드</label>
       </div>
 
       <button
@@ -125,7 +125,7 @@ export default function IncidentPhotoForm() {
         disabled={isSubmitting}
         className="px-4 py-2 font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
       >
-        {isSubmitting ? 'Uploading...' : 'Upload Photo'}
+        {isSubmitting ? '업로드 중...' : '업로드'}
       </button>
     </form>
   );
