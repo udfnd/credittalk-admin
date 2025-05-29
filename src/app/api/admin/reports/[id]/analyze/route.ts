@@ -1,55 +1,107 @@
-// src/app/api/admin/reports/[id]/analyze/route.ts
-import { supabaseAdmin } from '@/lib/supabase/admin'; // 서비스 키 클라이언트
-import { NextResponse } from 'next/server';
-import { type NextRequest } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase/admin'; // 서비스 키를 사용하는 Supabase 클라이언트
+import { type NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'; // 서버 컴포넌트/라우트 핸들러용
+import { cookies } from 'next/headers';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } } // Next.js App Router의 동적 라우트 파라미터 타입
 ) {
-
   const reportId = params.id;
+
+  const cookieStore = cookies();
+  const supabaseUserClient = createRouteHandlerClient({ cookies: () => cookieStore });
+
+  const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
+
+  if (authError || !user) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Unauthorized: User not authenticated.' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // public.users 테이블에서 is_admin 플래그 확인
+  const { data: adminProfile, error: profileError } = await supabaseAdmin
+    .from('users')
+    .select('is_admin')
+    .eq('auth_user_id', user.id)
+    .single();
+
+  if (profileError || !adminProfile?.is_admin) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Forbidden: User is not an admin.' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  // 관리자 인증 완료
+
   if (!reportId) {
-    return new NextResponse('Report ID is required', { status: 400 });
+    return new NextResponse(
+      JSON.stringify({ error: 'Report ID is required' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 
   try {
-    const { analysis_result, analysis_message } = await request.json();
+    const body = await request.json();
+    const { analysis_result, analysis_message } = body;
 
-    if (!analysis_result || !analysis_message) {
-      return new NextResponse('Analysis result and message are required', { status: 400 });
+    // analysis_result 와 analysis_message가 모두 제공되었는지 확인
+    // 둘 중 하나라도 undefined (키 자체가 없음)이거나, 명시적으로 필수라면 null/빈 문자열도 체크
+    if (analysis_result === undefined || analysis_message === undefined) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Analysis result and message are required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
-    const { data, error } = await supabaseAdmin
+    const updateData: {
+      analysis_result: string | null;
+      analysis_message: string | null;
+      analyzed_at: string;
+      analyzer_id: string;
+    } = {
+      analysis_result: analysis_result || null, // 빈 문자열 대신 null 저장
+      analysis_message: analysis_message || null, // 빈 문자열 대신 null 저장
+      analyzed_at: new Date().toISOString(),
+      analyzer_id: user.id, // 분석을 수행한 관리자의 ID
+    };
+
+    const { data, error: updateError } = await supabaseAdmin // 서비스 키 클라이언트 사용
       .from('scammer_reports')
-      .update({
-        analysis_result,
-        analysis_message,
-        analyzed_at: new Date().toISOString(), // 현재 시간으로 분석 시간 기록
-        // analyzer_id: user?.id // 분석한 관리자 ID 기록 (인증된 사용자 ID 사용 시)
-      })
+      .update(updateData)
       .eq('id', reportId)
       .select()
       .single();
 
-    if (error) {
-      console.error('Supabase Update Error:', error);
-      return new NextResponse(`Database Error: ${error.message}`, { status: 500 });
+    if (updateError) {
+      console.error('Supabase Update Error (analyze report):', updateError);
+      return new NextResponse(
+        JSON.stringify({ error: `Database Error: ${updateError.message}` }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
     }
     if (!data) {
-      return new NextResponse('Report not found or update failed', { status: 404 });
+      return new NextResponse(
+        JSON.stringify({ error: 'Report not found or update failed' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     return NextResponse.json(data);
 
   } catch (err) {
-    console.error('API Error:', err);
+    console.error('API Error (analyze report):', err);
     let errorMessage = 'An unknown error occurred';
     if (err instanceof Error) {
       errorMessage = err.message;
     } else if (typeof err === 'string') {
       errorMessage = err;
     }
-    return new NextResponse(`Internal Server Error: ${errorMessage}`, { status: 500 });
+    return new NextResponse(
+      JSON.stringify({ error: `Internal Server Error: ${errorMessage}` }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
