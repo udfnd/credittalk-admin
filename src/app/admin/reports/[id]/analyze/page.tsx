@@ -4,7 +4,7 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { analysisOptionsData, AnalysisOption } from '@/lib/analysisOptions'; // 경로 확인
+import { analysisOptionsData } from '@/lib/analysisOptions'; // 경로 확인
 
 // ScammerReport 타입 정의 (실제 테이블 컬럼에 맞춰 확장)
 interface ScammerReport {
@@ -35,7 +35,6 @@ interface ScammerReport {
 export default function AnalyzeReportPage() {
   const supabase = createClientComponentClient();
   const params = useParams();
-  const router = useRouter();
   const reportId = params?.id as string;
 
   const [report, setReport] = useState<ScammerReport | null>(null);
@@ -57,9 +56,6 @@ export default function AnalyzeReportPage() {
       setIsLoading(true);
       setError(null);
 
-      // 관리자이므로 모든 정보를 가져오고, 필요한 필드는 복호화합니다.
-      // 실제로는 get_decrypted_report_for_admin RPC 함수를 호출하는 API를 만드는 것이 좋습니다.
-      // 여기서는 클라이언트 사이드에서 'admin_scammer_reports_view' (복호화된 뷰)를 사용한다고 가정합니다.
       const { data, error: fetchError } = await supabase
         .from('admin_scammer_reports_view') // 복호화된 데이터가 포함된 뷰 사용
         .select('*')
@@ -126,7 +122,7 @@ export default function AnalyzeReportPage() {
       // router.push('/admin/reports'); // 목록 페이지로 이동하거나 현재 페이지 유지
       // 현재 페이지를 유지하며 업데이트된 정보를 보여주려면 fetchReportAndDecrypt() 다시 호출
       if (reportId) {
-        const { data, error: fetchError } = await supabase
+        const { data } = await supabase
           .from('admin_scammer_reports_view')
           .select('*')
           .eq('id', reportId)
@@ -134,8 +130,8 @@ export default function AnalyzeReportPage() {
         if (data) setReport(data as ScammerReport);
       }
 
-    } catch (err: any) {
-      alert(`오류: ${err.message}`);
+    } catch (err) {
+      alert(`오류: ${err}`);
     } finally {
       setIsSubmitting(false);
     }
