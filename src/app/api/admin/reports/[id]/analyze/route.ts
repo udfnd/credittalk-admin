@@ -7,10 +7,9 @@ import { cookies } from 'next/headers';
 
 export async function PUT(
   request: NextRequest,
-  // Next.js App Router의 표준적인 동적 라우트 파라미터 시그니처 사용
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const reportId = params.id; // 파라미터 직접 접근
+  const { id: reportId } = await params;
 
   if (!reportId) { // reportId 유효성 검사 위치 변경 (인증 전에도 가능)
     return new NextResponse(
@@ -19,13 +18,16 @@ export async function PUT(
     );
   }
 
-  const cookieStore = await cookies(); // d.ts 파일 기준 await 사용
+  const cookieStore = await cookies();
   const supabaseUserClient = createClient(cookieStore);
 
   const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
 
   if (authError || !user) {
     console.error(`API Authentication Error in analyze/route (PUT) for report ${reportId}:`, authError?.message || 'No user object found in session.');
+    // 실패 시 쿠키 정보 로깅 (디버깅용)
+    // const allCookies = cookieStore.getAll().map(c => `${c.name}=${c.value}`);
+    // console.log('Cookies present during auth failure:', allCookies.join('; '));
     return new NextResponse(
       JSON.stringify({ error: `Unauthorized: User not authenticated. ${authError?.message || ''}` }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }
