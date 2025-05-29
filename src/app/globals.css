@@ -11,29 +11,16 @@
   --color-foreground: var(--foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed; /* 다크 모드 전경색 */
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground); /* body의 기본 텍스트 색상 */
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* --- 입력 필드 스타일 추가 --- */
-@layer base {
-  input[type="text"],
-  input[type="email"],
-  input[type="password"],
-  input[type="number"],
-  input[type="search"],
-  textarea,
-  select {
-    @apply text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-700;
-  }
-}
-/* --- 추가 완료 --- */
+/*@layer base {*/
+/*  input,*/
+/*  textarea,*/
+/*  select {*/
+/*    @apply text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-700;*/
+/*  }*/
+/*}*/

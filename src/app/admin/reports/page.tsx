@@ -50,7 +50,7 @@ export default function ReportListPage() {
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">사기 신고 관리</h1>
+        <h1 className="text-3xl font-bold text-gray-900">사기 신고 관리</h1>
         {/* 필요한 경우 새로고침 버튼 등 추가 */}
       </div>
       {reports.length === 0 ? (
