@@ -1,15 +1,23 @@
-import { supabaseAdmin } from '@/lib/supabase/admin'; // 서비스 키를 사용하는 Supabase 클라이언트
+// src/app/api/admin/reports/[id]/analyze/route.ts
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'; // 서버 컴포넌트/라우트 핸들러용
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+
+interface RouteContext {
+  params: {
+    id: string;
+  };
+}
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } } // Next.js App Router의 동적 라우트 파라미터 타입
+  context: RouteContext // 타입을 명시적으로 사용
 ) {
-  const reportId = params.id;
+  const reportId = context.params.id; // context에서 params를 가져옴
 
   const cookieStore = cookies();
+  // @supabase/ssr 로 마이그레이션 권장. 현재는 auth-helpers-nextjs 사용.
   const supabaseUserClient = createRouteHandlerClient({ cookies: () => cookieStore });
 
   const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
@@ -21,7 +29,6 @@ export async function PUT(
     );
   }
 
-  // public.users 테이블에서 is_admin 플래그 확인
   const { data: adminProfile, error: profileError } = await supabaseAdmin
     .from('users')
     .select('is_admin')
@@ -34,7 +41,6 @@ export async function PUT(
       { status: 403, headers: { 'Content-Type': 'application/json' } }
     );
   }
-  // 관리자 인증 완료
 
   if (!reportId) {
     return new NextResponse(
@@ -47,8 +53,6 @@ export async function PUT(
     const body = await request.json();
     const { analysis_result, analysis_message } = body;
 
-    // analysis_result 와 analysis_message가 모두 제공되었는지 확인
-    // 둘 중 하나라도 undefined (키 자체가 없음)이거나, 명시적으로 필수라면 null/빈 문자열도 체크
     if (analysis_result === undefined || analysis_message === undefined) {
       return new NextResponse(
         JSON.stringify({ error: 'Analysis result and message are required' }),
@@ -56,19 +60,14 @@ export async function PUT(
       );
     }
 
-    const updateData: {
-      analysis_result: string | null;
-      analysis_message: string | null;
-      analyzed_at: string;
-      analyzer_id: string;
-    } = {
-      analysis_result: analysis_result || null, // 빈 문자열 대신 null 저장
-      analysis_message: analysis_message || null, // 빈 문자열 대신 null 저장
+    const updateData = {
+      analysis_result: analysis_result || null,
+      analysis_message: analysis_message || null,
       analyzed_at: new Date().toISOString(),
-      analyzer_id: user.id, // 분석을 수행한 관리자의 ID
+      analyzer_id: user.id,
     };
 
-    const { data, error: updateError } = await supabaseAdmin // 서비스 키 클라이언트 사용
+    const { data, error: updateError } = await supabaseAdmin
       .from('scammer_reports')
       .update(updateData)
       .eq('id', reportId)
