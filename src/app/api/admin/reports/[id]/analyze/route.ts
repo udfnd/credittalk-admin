@@ -6,9 +6,9 @@ import { cookies } from 'next/headers';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const reportId = params.id;
+  const { id: reportId } = await params;
 
   const cookieStore = cookies();
   const supabaseUserClient = createRouteHandlerClient({ cookies: () => cookieStore });
