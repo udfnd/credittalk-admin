@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { analysisOptionsData } from '@/lib/analysisOptions'; // 경로 확인
 
