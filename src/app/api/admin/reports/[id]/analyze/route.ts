@@ -1,20 +1,14 @@
 // src/app/api/admin/reports/[id]/analyze/route.ts
-import { supabaseAdmin } from '@/lib/supabase/admin'; // 서비스 키를 사용하는 Supabase 클라이언트
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'; // 서버 컴포넌트/라우트 핸들러용
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-
-interface RouteHandlerContext {
-  params: {
-    id: string; // [id] 세그먼트에 해당
-  };
-}
 
 export async function PUT(
   request: NextRequest,
-  context: RouteHandlerContext // 수정된 타입 적용
+  context: { params: { id: string } }
 ) {
-  const reportId = context.params.id; // context 객체를 통해 params 접근
+  const reportId = context.params.id;
 
   const cookieStore = cookies();
   const supabaseUserClient = createRouteHandlerClient({ cookies: () => cookieStore });
@@ -28,7 +22,6 @@ export async function PUT(
     );
   }
 
-  // public.users 테이블에서 is_admin 플래그 확인 (서비스 키 클라이언트 사용)
   const { data: adminProfile, error: profileError } = await supabaseAdmin
     .from('users')
     .select('is_admin')
@@ -41,7 +34,6 @@ export async function PUT(
       { status: 403, headers: { 'Content-Type': 'application/json' } }
     );
   }
-  // 관리자 인증 완료
 
   if (!reportId) {
     return new NextResponse(
@@ -65,7 +57,7 @@ export async function PUT(
       analysis_result: analysis_result || null,
       analysis_message: analysis_message || null,
       analyzed_at: new Date().toISOString(),
-      analyzer_id: user.id, // 분석을 수행한 관리자의 ID
+      analyzer_id: user.id,
     };
 
     const { data, error: updateError } = await supabaseAdmin
