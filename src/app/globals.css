@@ -1,3 +1,4 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
 :root {
@@ -5,11 +6,11 @@
   --foreground: #171717;
 }
 
-@theme inline {
+@theme inline { /* 기존 @theme inline 유지 */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* --font-sans: var(--font-geist-sans); */ /* Geist Sans 폰트 사용 시 주석 해제 또는 프로젝트에 맞게 설정 */
+  /* --font-mono: var(--font-geist-mono); */ /* Geist Mono 폰트 사용 시 주석 해제 또는 프로젝트에 맞게 설정 */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +23,21 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Arial, Helvetica, sans-serif; /* 기본 폰트 설정 유지 */
+}
+
+@layer base {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  textarea,
+  select {
+    @apply text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-700;
+    /* 기본 텍스트 색상: text-gray-900 (라이트 모드) / dark:text-gray-100 (다크 모드)
+      플레이스홀더 색상: placeholder-gray-400 / dark:placeholder-gray-500
+      테두리 및 포커스 스타일, 배경색도 라이트/다크 모드 고려하여 추가
+    */
+  }
 }
