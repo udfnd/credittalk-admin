@@ -144,12 +144,12 @@ export default function AnalyzeReportPage() {
   const currentAnalysisOptions = analysisOptionsData[report.category as keyof typeof analysisOptionsData] || [];
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">사기 신고 분석 (ID: {report.id})</h1>
+    <div className="container mx-auto p-0 md:p-4">
+      <h1 className="text-2xl md:text-3xl font-bold mb-6">사기 신고 분석 (ID: {report.id})</h1>
 
       <div className="bg-white shadow-md rounded-lg p-6 mb-6">
         <h2 className="text-xl font-semibold mb-3">신고 정보 요약</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 break-words">
           <p><strong>카테고리:</strong> {report.category}</p>
           <p><strong>신고일:</strong> {new Date(report.created_at).toLocaleString()}</p>
           <p><strong>이름:</strong> {report.name || 'N/A'}</p>

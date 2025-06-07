@@ -63,7 +63,7 @@ export default function NoticeForm() {
         <input
           id="title"
           {...register('title', { required: 'Title is required' })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
         />
         {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
       </div>
@@ -74,7 +74,7 @@ export default function NoticeForm() {
           id="content"
           rows={5}
           {...register('content', { required: 'Content is required' })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
         />
         {errors.content && <p className="mt-1 text-sm text-red-600">{errors.content.message}</p>}
       </div>
@@ -84,7 +84,7 @@ export default function NoticeForm() {
         <input
           id="author_name"
           {...register('author_name')}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
         />
       </div>
 

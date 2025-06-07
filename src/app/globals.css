@@ -1,5 +1,5 @@
 /* src/app/globals.css */
-@import "tailwindcss"; /* 기존 TailwindCSS import가 있다면 유지, 없다면 아래 형태로 변경 가능 */
+@import "tailwindcss";
 
 :root {
   --background: #ffffff;
@@ -17,10 +17,26 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/*@layer base {*/
-/*  input,*/
-/*  textarea,*/
-/*  select {*/
-/*    @apply text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-700;*/
-/*  }*/
-/*}*/
+/* 반응형 테이블을 위한 Custom CSS */
+@media (max-width: 768px) {
+  .responsive-table thead {
+    @apply hidden;
+  }
+
+  .responsive-table tr {
+    @apply block mb-4 border border-gray-200 rounded-lg shadow-sm;
+  }
+
+  .responsive-table td {
+    @apply block text-right p-4;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .responsive-table td:last-child {
+    @apply border-b-0;
+  }
+
+  .responsive-table td::before {
+    @apply content-[attr(data-label)] float-left font-bold text-gray-600;
+  }
+}

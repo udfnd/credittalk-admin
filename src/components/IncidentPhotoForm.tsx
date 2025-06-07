@@ -74,7 +74,7 @@ export default function IncidentPhotoForm() {
         <input
           id="title"
           {...register('title', { required: 'Title is required' })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
         {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
       </div>
@@ -86,7 +86,7 @@ export default function IncidentPhotoForm() {
           type="file"
           accept="image/*"
           {...register('imageFile', { required: 'Image file is required' })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
       </div>
@@ -97,7 +97,7 @@ export default function IncidentPhotoForm() {
           id="description"
           rows={3}
           {...register('description')}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
 
@@ -106,7 +106,7 @@ export default function IncidentPhotoForm() {
         <input
           id="category"
           {...register('category')}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm"
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
 
