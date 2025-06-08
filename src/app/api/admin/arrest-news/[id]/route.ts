@@ -25,8 +25,10 @@ type ArrestNewsUpdate = {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -34,7 +36,7 @@ export async function GET(
   const { data, error } = await supabaseAdmin
     .from('arrest_news')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .single();
 
   if (error) return new NextResponse(error.message, { status: 404 });
@@ -43,8 +45,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -80,7 +84,7 @@ export async function POST(
     const { error } = await supabaseAdmin
       .from('arrest_news')
       .update(updates)
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) throw new Error(error.message);
 
@@ -94,8 +98,10 @@ export async function POST(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -103,7 +109,7 @@ export async function DELETE(
   const { error } = await supabaseAdmin
     .from('arrest_news')
     .delete()
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) return new NextResponse(error.message, { status: 500 });
 
