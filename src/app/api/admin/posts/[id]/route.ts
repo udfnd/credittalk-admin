@@ -16,9 +16,11 @@ async function isRequestFromAdmin(): Promise<boolean> {
 
 // 단일 게시글 조회
 export async function GET(
-  _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -26,7 +28,7 @@ export async function GET(
   const { data, error } = await supabaseAdmin
     .from('community_posts')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .single();
 
   if (error) {
@@ -39,8 +41,10 @@ export async function GET(
 // 게시글 수정
 export async function PUT(
   request: NextRequest, // request.json()을 사용하므로 이름 유지
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -52,7 +56,7 @@ export async function PUT(
       content: body.content,
       category: body.category,
     })
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) {
     return new NextResponse(error.message, { status: 500 });
@@ -63,8 +67,10 @@ export async function PUT(
 // 게시글 삭제
 export async function DELETE(
   _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -72,7 +78,7 @@ export async function DELETE(
   const { error } = await supabaseAdmin
     .from('community_posts')
     .delete()
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) {
     return new NextResponse(error.message, { status: 500 });

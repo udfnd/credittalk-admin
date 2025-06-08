@@ -17,8 +17,10 @@ async function isRequestFromAdmin(): Promise<boolean> {
 // 단일 후기 조회
 export async function GET(
   _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -26,7 +28,7 @@ export async function GET(
   const { data, error } = await supabaseAdmin
     .from('reviews')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .single();
 
   if (error) {
@@ -39,8 +41,10 @@ export async function GET(
 // 후기 수정
 export async function PUT(
   request: NextRequest, // request.json()을 사용하므로 이름 유지
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -53,7 +57,7 @@ export async function PUT(
       rating: body.rating,
       is_published: body.is_published
     })
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) {
     return new NextResponse(error.message, { status: 500 });
@@ -64,8 +68,10 @@ export async function PUT(
 // 후기 삭제
 export async function DELETE(
   _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -73,7 +79,7 @@ export async function DELETE(
   const { error } = await supabaseAdmin
     .from('reviews')
     .delete()
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (error) {
     return new NextResponse(error.message, { status: 500 });

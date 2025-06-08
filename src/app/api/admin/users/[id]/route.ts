@@ -22,9 +22,10 @@ async function isRequestFromAdmin(): Promise<boolean> {
 
 export async function DELETE(
   _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const userAuthId = params.id;
+  const { id } = await params;
+  const userAuthId = id;
 
   if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
