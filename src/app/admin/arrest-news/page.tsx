@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface ArrestNews {
   id: number;
