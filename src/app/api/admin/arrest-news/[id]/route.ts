@@ -1,0 +1,108 @@
+// src/app/api/admin/arrest-news/[id]/route.ts
+import { supabaseAdmin } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { type NextRequest, NextResponse } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
+
+async function isAdmin(): Promise<boolean> {
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: isAdmin } = await supabase.rpc('is_current_user_admin');
+  return isAdmin === true;
+}
+
+// 단일 항목 조회
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  if (!(await isAdmin())) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('arrest_news')
+    .select('*')
+    .eq('id', params.id)
+    .single();
+
+  if (error) return new NextResponse(error.message, { status: 404 });
+  return NextResponse.json(data);
+}
+
+// 항목 수정
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  if (!(await isAdmin())) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  try {
+    const formData = await request.formData();
+
+    const updates: { [key: string]: any } = {
+      title: formData.get('title') as string,
+      content: formData.get('content') as string | null,
+      author_name: formData.get('author_name') as string | null,
+      is_published: formData.get('is_published') === 'true',
+    };
+
+    const imageFile = formData.get('imageFile') as File | null;
+    const BUCKET_NAME = 'arrest-news-images';
+
+    if (imageFile && imageFile.size > 0) {
+      // TODO: 기존 이미지 삭제 로직 추가 (선택 사항)
+      const fileName = `${uuidv4()}-${imageFile.name}`;
+      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .upload(fileName, imageFile);
+
+      if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
+
+      const { data: { publicUrl } } = supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(uploadData.path);
+      updates.image_url = publicUrl;
+    }
+
+    const { error } = await supabaseAdmin
+      .from('arrest_news')
+      .update(updates)
+      .eq('id', params.id);
+
+    if (error) throw new Error(error.message);
+
+    return NextResponse.json({ message: 'Update successful' });
+
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    return new NextResponse(errorMessage, { status: 500 });
+  }
+}
+
+// 항목 삭제
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  if (!(await isAdmin())) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  // TODO: 스토리지에서 이미지 파일도 함께 삭제하는 로직 추가 (선택 사항)
+
+  const { error } = await supabaseAdmin
+    .from('arrest_news')
+    .delete()
+    .eq('id', params.id);
+
+  if (error) return new NextResponse(error.message, { status: 500 });
+
+  return new NextResponse(null, { status: 204 });
+}
