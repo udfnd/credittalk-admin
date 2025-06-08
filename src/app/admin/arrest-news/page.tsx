@@ -14,7 +14,6 @@ interface ArrestNews {
 }
 
 export default function ManageArrestNewsPage() {
-  const supabase = createClientComponentClient();
   const [news, setNews] = useState<ArrestNews[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

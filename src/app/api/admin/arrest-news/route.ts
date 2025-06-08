@@ -20,7 +20,7 @@ async function isAdmin(): Promise<boolean> {
 }
 
 // 모든 검거소식 조회
-export async function GET(request: NextRequest) {
+export async function GET() {
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

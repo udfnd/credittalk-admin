@@ -6,7 +6,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 
 async function isAdmin(): Promise<boolean> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
@@ -15,7 +15,14 @@ async function isAdmin(): Promise<boolean> {
   return isAdmin === true;
 }
 
-// 단일 항목 조회
+type ArrestNewsUpdate = {
+  title: string;
+  content: string | null;
+  author_name: string | null;
+  is_published: boolean;
+  image_url?: string | null; // 이미지는 선택적으로 추가되므로 '?'를 붙입니다.
+};
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -34,7 +41,6 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-// 항목 수정
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -46,7 +52,7 @@ export async function POST(
   try {
     const formData = await request.formData();
 
-    const updates: { [key: string]: any } = {
+    const updates: ArrestNewsUpdate = {
       title: formData.get('title') as string,
       content: formData.get('content') as string | null,
       author_name: formData.get('author_name') as string | null,
@@ -86,7 +92,6 @@ export async function POST(
   }
 }
 
-// 항목 삭제
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -94,8 +99,6 @@ export async function DELETE(
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-
-  // TODO: 스토리지에서 이미지 파일도 함께 삭제하는 로직 추가 (선택 사항)
 
   const { error } = await supabaseAdmin
     .from('arrest_news')
