@@ -47,7 +47,7 @@ export default function EditReviewPage() {
       setMessage({ type: 'success', text: '후기가 성공적으로 수정되었습니다.' });
       setTimeout(() => router.push('/admin/reviews'), 1500);
     } catch (err) {
-      setMessage({ type: 'error', text: '수정 중 오류가 발생했습니다.' });
+      setMessage({ type: 'error', text: `수정 중 오류가 발생했습니다.  ${err}` });
     }
   };
 

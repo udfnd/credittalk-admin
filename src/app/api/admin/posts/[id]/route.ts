@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
 
-async function isRequestFromAdmin(request: NextRequest): Promise<boolean> {
+// 관리자인지 확인하는 헬퍼 함수 (request 파라미터 제거)
+async function isRequestFromAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
@@ -15,10 +16,10 @@ async function isRequestFromAdmin(request: NextRequest): Promise<boolean> {
 
 // 단일 게시글 조회
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
   { params }: { params: { id: string } }
 ) {
-  if (!await isRequestFromAdmin(request)) {
+  if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
@@ -37,10 +38,10 @@ export async function GET(
 
 // 게시글 수정
 export async function PUT(
-  request: NextRequest,
+  request: NextRequest, // request.json()을 사용하므로 이름 유지
   { params }: { params: { id: string } }
 ) {
-  if (!await isRequestFromAdmin(request)) {
+  if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
   const body = await request.json();
@@ -61,10 +62,10 @@ export async function PUT(
 
 // 게시글 삭제
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest, // 사용되지 않으므로 '_' 접두사 추가
   { params }: { params: { id: string } }
 ) {
-  if (!await isRequestFromAdmin(request)) {
+  if (!await isRequestFromAdmin()) { // request 인자 없이 호출
     return new NextResponse('Unauthorized', { status: 401 });
   }
 

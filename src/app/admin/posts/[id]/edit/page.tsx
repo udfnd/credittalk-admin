@@ -46,7 +46,7 @@ export default function EditPostPage() {
       setMessage({ type: 'success', text: '게시글이 성공적으로 수정되었습니다.' });
       setTimeout(() => router.push('/admin/posts'), 1500);
     } catch (err) {
-      setMessage({ type: 'error', text: '수정 중 오류가 발생했습니다.' });
+      setMessage({ type: 'error', text: `수정 중 오류가 발생했습니다. ${err}` });
     }
   };
 
