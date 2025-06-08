@@ -9,6 +9,16 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  const navLinks = [
+    { href: '/admin', label: '홈' },
+    { href: '/admin/notices', label: '공지사항 작성' },
+    { href: '/admin/incident-photos', label: '사건 사진자료 작성' },
+    { href: '/admin/reports', label: '신고 분석 및 관리' },
+    { href: '/admin/users', label: '회원 관리' },
+    { href: '/admin/reviews', label: '후기 관리' },
+    { href: '/admin/posts', label: '커뮤니티 글 관리' },
+  ];
+
   return (
     <div className="relative flex min-h-screen bg-gray-100">
       {/* Sidebar Overlay for mobile */}
@@ -23,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside
         className={`fixed inset-y-0 left-0 z-30 w-64 p-6 text-white bg-gray-800 shadow-md transform ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex-shrink-0`}
+        } transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex-shrink-0 flex flex-col`}
       >
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">크레디톡 어드민</h1>
@@ -34,28 +44,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
-        <nav>
-          <ul className="space-y-4">
-            <li>
-              <Link href="/admin" onClick={() => setIsSidebarOpen(false)} className="block py-2 px-3 rounded hover:bg-gray-700 hover:text-indigo-300 transition-colors duration-200">
-                홈
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/notices" onClick={() => setIsSidebarOpen(false)} className="block py-2 px-3 rounded hover:bg-gray-700 hover:text-indigo-300 transition-colors duration-200">
-                공지사항 작성
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/incident-photos" onClick={() => setIsSidebarOpen(false)} className="block py-2 px-3 rounded hover:bg-gray-700 hover:text-indigo-300 transition-colors duration-200">
-                사건 사진자료 작성
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/reports" onClick={() => setIsSidebarOpen(false)} className="block py-2 px-3 rounded hover:bg-gray-700 hover:text-indigo-300 transition-colors duration-200">
-                신고 분석 및 관리
-              </Link>
-            </li>
+        <nav className="flex-grow">
+          <ul className="space-y-2">
+            {navLinks.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="block py-2 px-3 rounded hover:bg-gray-700 hover:text-indigo-300 transition-colors duration-200"
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ))}
           </ul>
         </nav>
         <div className="mt-auto pt-6">
