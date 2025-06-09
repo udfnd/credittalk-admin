@@ -13,8 +13,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin', label: '홈' },
     { href: '/admin/notices', label: '공지사항 작성' },
     { href: '/admin/incident-photos', label: '사건 사진자료 작성' },
-    { href: '/admin/arrest-news', label: '검거소식 관리' }, // <-- 추가된 라인
+    { href: '/admin/arrest-news', label: '검거소식 관리' },
     { href: '/admin/reports', label: '신고 분석 및 관리' },
+    { href: '/admin/help-desk', label: '고객 문의 관리' }, // <-- 이 부분을 추가해주세요.
     { href: '/admin/users', label: '회원 관리' },
     { href: '/admin/reviews', label: '후기 관리' },
     { href: '/admin/posts', label: '커뮤니티 글 관리' },
