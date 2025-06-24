@@ -1,61 +1,110 @@
+// src/app/api/admin/notices/route.ts
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
+import { v4 as uuidv4 } from 'uuid';
 
 async function isAdmin(): Promise<boolean> {
-  const cookieStore = await cookies(); // d.ts 파일 기준 await 사용
+  const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
   const { data, error } = await supabase.rpc('is_current_user_admin');
   if (error) {
-    console.error("Admin check failed:", error);
+    console.error("Admin check failed in notices API:", error);
     return false;
   }
   return data === true;
 }
 
-export async function POST(request: Request) {
+export async function GET() {
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
   try {
-    const { title, content, author_name, is_published } = await request.json();
+    const { data, error } = await supabaseAdmin
+      .from('notices')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    return new NextResponse(errorMessage, { status: 500 });
+  }
+}
+
+
+// 새로운 공지사항 생성
+export async function POST(request: NextRequest) {
+  if (!(await isAdmin())) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  try {
+    const formData = await request.formData();
+    const title = formData.get('title') as string;
+    const content = formData.get('content') as string;
+    const link_url = formData.get('link_url') as string | null;
+    const author_name = formData.get('author_name') as string | null;
+    const is_published = formData.get('is_published') === 'true';
+    const imageFile = formData.get('imageFile') as File | null;
 
     if (!title || !content) {
       return new NextResponse('Title and Content are required', { status: 400 });
     }
 
+    let imageUrl: string | null = null;
+    const BUCKET_NAME = 'notice-images';
+
+    if (imageFile && imageFile.size > 0) {
+      const fileName = `${uuidv4()}-${imageFile.name}`;
+
+      const { data: uploadData, error: uploadError } = await supabaseAdmin
+        .storage
+        .from(BUCKET_NAME)
+        .upload(fileName, imageFile);
+
+      if (uploadError) {
+        throw new Error(`Storage Error: ${uploadError.message}`);
+      }
+
+      const { data: { publicUrl } } = supabaseAdmin
+        .storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(uploadData.path);
+
+      imageUrl = publicUrl;
+    }
+
     const { data, error } = await supabaseAdmin
       .from('notices')
-      .insert([{
+      .insert({
         title,
         content,
+        link_url,
+        image_url: imageUrl,
         author_name: author_name || 'Admin',
-        is_published: is_published !== undefined ? is_published : true,
-      }])
+        is_published,
+      })
       .select()
       .single();
 
     if (error) {
-      console.error('Supabase Error:', error);
-      return new NextResponse(`Database Error: ${error.message}`, { status: 500 });
+      throw new Error(`Database Error: ${error.message}`);
     }
 
     return NextResponse.json(data);
-
-  } catch (err) { // any 타입 제거 및 타입 체크
-    console.error('API Error:', err);
-    let errorMessage = 'An unknown error occurred';
-    if (err instanceof Error) {
-      errorMessage = err.message;
-    } else if (typeof err === 'string') {
-      errorMessage = err;
-    }
-    return new NextResponse(`Internal Server Error: ${errorMessage}`, { status: 500 });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown internal error';
+    console.error('Notice POST Error:', errorMessage);
+    return new NextResponse(errorMessage, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
+// src/app/api/admin/incident-photos/route.ts
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -19,9 +20,31 @@ async function isAdmin(): Promise<boolean> {
     console.error("isAdmin: RPC call failed:", error);
     return false;
   }
-  console.log("isAdmin: Check result:", data);
   return data === true;
 }
+
+export async function GET() {
+  if (!(await isAdmin())) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('incident_photos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    return new NextResponse(errorMessage, { status: 500 });
+  }
+}
+
 
 export async function POST(request: Request) {
   console.log("API Route: Received POST request.");
@@ -48,15 +71,16 @@ export async function POST(request: Request) {
     const extension = originalName.includes('.') ? originalName.substring(originalName.lastIndexOf('.')) : '';
     const safeExtension = extension.replace(/[^a-zA-Z0-9.]/g, '');
     const fileName = `${uuidv4()}${safeExtension}`;
+    const BUCKET_NAME = 'incident-photos';
 
-    console.log(`API Route: Generated key: "${fileName}". Uploading to "incident-photos" bucket.`);
+    console.log(`API Route: Generated key: "${fileName}". Uploading to "${BUCKET_NAME}" bucket.`);
     const { data: uploadData, error: uploadError } = await supabaseAdmin
       .storage
-      .from('incident-photos') // 버킷 이름 확인!
+      .from(BUCKET_NAME)
       .upload(fileName, imageFile, {
         cacheControl: '3600',
-        upsert: false, // 동일 이름 파일 덮어쓰기 방지
-        contentType: imageFile.type // Content-Type 명시
+        upsert: false,
+        contentType: imageFile.type
       });
 
     if (uploadError) {
@@ -71,7 +95,7 @@ export async function POST(request: Request) {
 
     const { data: { publicUrl } } = supabaseAdmin
       .storage
-      .from('incident-photos')
+      .from(BUCKET_NAME)
       .getPublicUrl(uploadData.path);
 
     if (!publicUrl) {
@@ -100,7 +124,7 @@ export async function POST(request: Request) {
 
     if (dbError) {
       console.error('API Route: Supabase DB Insert Error:', dbError);
-      await supabaseAdmin.storage.from('incident-photos').remove([fileName]);
+      await supabaseAdmin.storage.from(BUCKET_NAME).remove([fileName]);
       console.warn("API Route: Rolled back storage upload due to DB error.");
       return new NextResponse(`Database Error: ${dbError.message}`, { status: 500 });
     }
@@ -108,7 +132,7 @@ export async function POST(request: Request) {
     console.log("API Route: DB insert successful. ID:", dbData.id);
     return NextResponse.json(dbData);
 
-  } catch (err) { // 최종 에러 캐치
+  } catch (err) {
     console.error('API Route: Uncaught Error:', err);
     let errorMessage = 'An unknown internal error occurred';
     if (err instanceof Error) {
