@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+// createClientComponentClient 는 목록 조회에 더 이상 필요 없으므로 삭제해도 됩니다.
 
 interface UserProfile {
   id: number;
@@ -15,36 +15,39 @@ interface UserProfile {
 }
 
 export default function ManageUsersPage() {
-  const supabase = createClientComponentClient();
+  // const supabase = createClientComponentClient(); // 더 이상 필요 없음
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      setIsLoading(true);
-      setError(null);
+  // 데이터를 가져오는 함수를 분리
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/users'); // 새로 만든 API 라우트 호출
 
-      // 관리자는 모든 사용자 정보를 조회해야 하므로 service_role을 사용하는 RPC를 만들거나,
-      // API 라우트를 통해 가져오는 것이 안전합니다.
-      // 여기서는 RLS를 우회할 수 있는 'users' 테이블 직접 조회를 시도합니다.
-      // (관리자용 RLS 정책이 필요할 수 있습니다.)
-      const { data, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        console.error("Error fetching users:", fetchError);
-        setError("사용자 목록을 불러오는 데 실패했습니다. 권한을 확인하세요.");
-        setUsers([]);
-      } else {
-        setUsers(data as UserProfile[]);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "사용자 목록을 불러오는 데 실패했습니다. 권한을 확인하세요.");
       }
+
+      const data = await response.json();
+      setUsers(data as UserProfile[]);
+
+    } catch (err) {
+      console.error("Error fetching users:", err);
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(errorMessage);
+      setUsers([]);
+    } finally {
       setIsLoading(false);
-    };
+    }
+  };
+
+  useEffect(() => {
     fetchUsers();
-  }, [supabase]);
+  }, []);
 
   const handleDelete = async (userAuthId: string, userName: string) => {
     if (window.confirm(`정말로 '${userName}' 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
@@ -57,7 +60,8 @@ export default function ManageUsersPage() {
           throw new Error(await response.text() || 'Failed to delete user.');
         }
 
-        setUsers(users.filter(user => user.auth_user_id !== userAuthId));
+        // 삭제 성공 시, 목록을 다시 불러와서 화면을 갱신합니다.
+        await fetchUsers();
         alert('사용자가 성공적으로 삭제되었습니다.');
 
       } catch (err) {
