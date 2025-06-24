@@ -26,9 +26,9 @@ type PhotoUpdate = {
 // 단일 사진 조회
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -47,9 +47,9 @@ export async function GET(
 // 사진 정보 수정
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -112,9 +112,9 @@ export async function POST(
 // 사진 삭제
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
