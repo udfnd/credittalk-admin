@@ -41,8 +41,6 @@ export async function GET() {
   }
 }
 
-
-// 새로운 공지사항 생성
 export async function POST(request: NextRequest) {
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
