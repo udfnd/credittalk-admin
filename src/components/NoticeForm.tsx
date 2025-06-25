@@ -33,6 +33,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         author_name: '관리자',
       };
     }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { image_urls, ...formDefaults } = initialData;
     return formDefaults;
   };
