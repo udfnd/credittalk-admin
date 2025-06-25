@@ -10,7 +10,7 @@ interface Notice {
   title: string;
   content: string;
   author_name?: string;
-  image_url?: string;
+  image_urls?: string[];
   link_url?: string;
   is_published: boolean;
 }

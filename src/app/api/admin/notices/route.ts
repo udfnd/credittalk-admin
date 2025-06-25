@@ -53,33 +53,37 @@ export async function POST(request: NextRequest) {
     const link_url = formData.get('link_url') as string | null;
     const author_name = formData.get('author_name') as string | null;
     const is_published = formData.get('is_published') === 'true';
-    const imageFile = formData.get('imageFile') as File | null;
+    const imageFiles = formData.getAll('imageFile') as File[];
 
     if (!title || !content) {
       return new NextResponse('Title and Content are required', { status: 400 });
     }
 
-    let imageUrl: string | null = null;
+    const imageUrls: string[] = [];
     const BUCKET_NAME = 'notice-images';
 
-    if (imageFile && imageFile.size > 0) {
-      const fileName = `${uuidv4()}-${imageFile.name}`;
+    for (const imageFile of imageFiles) {
+      if (imageFile && imageFile.size > 0) {
+        const fileName = `${uuidv4()}-${imageFile.name}`;
 
-      const { data: uploadData, error: uploadError } = await supabaseAdmin
-        .storage
-        .from(BUCKET_NAME)
-        .upload(fileName, imageFile);
+        const { data: uploadData, error: uploadError } = await supabaseAdmin
+          .storage
+          .from(BUCKET_NAME)
+          .upload(fileName, imageFile);
 
-      if (uploadError) {
-        throw new Error(`Storage Error: ${uploadError.message}`);
+        if (uploadError) {
+          throw new Error(`Storage Error: ${uploadError.message}`);
+        }
+
+        const { data: { publicUrl } } = supabaseAdmin
+          .storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(uploadData.path);
+
+        if(publicUrl) {
+          imageUrls.push(publicUrl);
+        }
       }
-
-      const { data: { publicUrl } } = supabaseAdmin
-        .storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(uploadData.path);
-
-      imageUrl = publicUrl;
     }
 
     const { data, error } = await supabaseAdmin
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
         title,
         content,
         link_url,
-        image_url: imageUrl,
+        image_urls: imageUrls.length > 0 ? imageUrls : null,
         author_name: author_name || 'Admin',
         is_published,
       })

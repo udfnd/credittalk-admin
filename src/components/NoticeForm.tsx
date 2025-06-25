@@ -10,12 +10,12 @@ type Notice = {
   title: string;
   content: string;
   author_name?: string;
-  image_url?: string;
+  image_urls?: string[];
   link_url?: string;
   is_published: boolean;
 };
 
-type FormInputs = Notice & {
+type FormInputs = Omit<Notice, 'image_urls'> & {
   imageFile?: FileList;
 };
 
@@ -25,11 +25,20 @@ interface NoticeFormProps {
 
 export default function NoticeForm({ initialData }: NoticeFormProps) {
   const router = useRouter();
+
+  const getSanitizedInitialValues = () => {
+    if (!initialData) {
+      return {
+        is_published: true,
+        author_name: '관리자',
+      };
+    }
+    const { image_urls, ...formDefaults } = initialData;
+    return formDefaults;
+  };
+
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormInputs>({
-    defaultValues: initialData || {
-      is_published: true,
-      author_name: '관리자',
-    },
+    defaultValues: getSanitizedInitialValues(),
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -44,12 +53,15 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
     formData.append('link_url', data.link_url || '');
     formData.append('author_name', data.author_name || '관리자');
     formData.append('is_published', String(data.is_published));
+
     if (data.imageFile && data.imageFile.length > 0) {
-      formData.append('imageFile', data.imageFile[0]);
+      for (const file of data.imageFile) {
+        formData.append('imageFile', file);
+      }
     }
 
     const url = isEditMode ? `/api/admin/notices/${initialData.id}` : '/api/admin/notices';
-    const method = 'POST'; // 생성 및 수정 모두 POST 사용 (FormData)
+    const method = 'POST';
 
     try {
       const response = await fetch(url, { method, body: formData });
@@ -107,20 +119,28 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
 
       <div>
         <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
+          대표 이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'}
         </label>
         <input
           id="imageFile"
           type="file"
           accept="image/*"
-          {...register('imageFile', { required: isEditMode ? false : '새 글에는 이미지가 필수입니다.' })}
+          multiple
+          {...register('imageFile', {
+            required: isEditMode ? false : '새 글에는 이미지가 필수입니다.',
+            validate: (files) => (files && files.length > 3) ? '최대 3개의 이미지만 업로드할 수 있습니다.' : true,
+          })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
-        {initialData?.image_url && (
-          <div className="mt-2">
-            <p className="text-sm text-gray-600">현재 이미지:</p>
-            <img src={initialData.image_url} alt={initialData.title} className="max-w-xs mt-1 rounded"/>
+        {initialData?.image_urls && initialData.image_urls.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
+            <div className="flex flex-wrap gap-4">
+              {initialData.image_urls.map((url, index) => (
+                <img key={index} src={url} alt={`${initialData.title} 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
+              ))}
+            </div>
           </div>
         )}
       </div>

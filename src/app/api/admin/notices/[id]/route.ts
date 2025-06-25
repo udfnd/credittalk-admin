@@ -5,7 +5,6 @@ import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 
-// 관리자인지 확인하는 헬퍼 함수
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -22,7 +21,7 @@ type NoticeUpdate = {
   link_url: string | null;
   author_name: string | null;
   is_published: boolean;
-  image_url?: string | null;
+  image_urls?: string[] | null;
 };
 
 export async function GET(
@@ -47,7 +46,6 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-// 공지사항 수정 (POST)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -69,37 +67,38 @@ export async function POST(
       is_published: formData.get('is_published') === 'true',
     };
 
-    const imageFile = formData.get('imageFile') as File | null;
+    const imageFiles = formData.getAll('imageFile') as File[];
     const BUCKET_NAME = 'notice-images';
 
-    // 새 이미지 파일이 있는 경우에만 스토리지 작업을 수행합니다.
-    if (imageFile && imageFile.size > 0) {
-      // 1. 기존 이미지가 있다면 삭제합니다.
-      const { data: currentNotice } = await supabaseAdmin.from('notices').select('image_url').eq('id', id).single();
-      if (currentNotice?.image_url) {
-        const oldImageName = currentNotice.image_url.split('/').pop();
-        if (oldImageName) {
-          await supabaseAdmin.storage.from(BUCKET_NAME).remove([oldImageName]);
+    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
+      const { data: currentNotice } = await supabaseAdmin.from('notices').select('image_urls').eq('id', id).single();
+      if (currentNotice?.image_urls && currentNotice.image_urls.length > 0) {
+        const oldImageNames = currentNotice.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+        if (oldImageNames.length > 0) {
+          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
         }
       }
 
-      // 2. 새 이미지를 업로드합니다.
-      const fileName = `${uuidv4()}-${imageFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .upload(fileName, imageFile);
+      const newImageUrls: string[] = [];
+      for (const imageFile of imageFiles) {
+        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+          .from(BUCKET_NAME)
+          .upload(fileName, imageFile);
 
-      if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
+        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
 
-      // 3. 새 이미지의 public URL을 가져옵니다.
-      const { data: { publicUrl } } = supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(uploadData.path);
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(uploadData.path);
 
-      updates.image_url = publicUrl;
+        if (publicUrl) {
+          newImageUrls.push(publicUrl);
+        }
+      }
+      updates.image_urls = newImageUrls;
     }
 
-    // 데이터베이스 업데이트
     const { error } = await supabaseAdmin
       .from('notices')
       .update(updates)
@@ -115,7 +114,6 @@ export async function POST(
   }
 }
 
-// 공지사항 삭제 (DELETE)
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -127,22 +125,16 @@ export async function DELETE(
   }
 
   try {
-    // 1. DB에서 이미지 URL을 먼저 조회합니다.
     const { data: notice, error: fetchError } = await supabaseAdmin
       .from('notices')
-      .select('image_url')
+      .select('image_urls')
       .eq('id', id)
       .single();
 
-    if (fetchError) {
-      // 게시글이 없는 경우도 성공으로 처리할 수 있습니다.
-      if (fetchError.code === 'PGRST116') {
-        return new NextResponse(null, { status: 204 });
-      }
+    if (fetchError && fetchError.code !== 'PGRST116') {
       throw new Error(`Failed to fetch notice for deletion: ${fetchError.message}`);
     }
 
-    // 2. DB 레코드를 삭제합니다.
     const { error: deleteError } = await supabaseAdmin
       .from('notices')
       .delete()
@@ -152,12 +144,11 @@ export async function DELETE(
       throw new Error(`Database delete error: ${deleteError.message}`);
     }
 
-    // 3. DB 레코드가 성공적으로 삭제된 후, 스토리지에서 이미지 파일을 삭제합니다.
-    if (notice.image_url) {
+    if (notice?.image_urls && notice.image_urls.length > 0) {
       const BUCKET_NAME = 'notice-images';
-      const imageName = notice.image_url.split('/').pop();
-      if (imageName) {
-        await supabaseAdmin.storage.from(BUCKET_NAME).remove([imageName]);
+      const imageNames = notice.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+      if (imageNames.length > 0) {
+        await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
       }
     }
 
