@@ -22,7 +22,6 @@ export async function GET() {
     // 사용자의 auth.users 테이블에서 직접 최신 로그인 기록을 가져옵니다.
     // 이것이 가장 정확한 로그인 시간 정보입니다.
     const { data: authUsersResponse, error: authError } = await supabaseAdmin.auth.admin.listUsers({
-      sortBy: { field: 'last_sign_in_at', order: 'desc' },
       page: 1,
       perPage: 100, // 최근 100명의 로그인 기록을 가져옵니다.
     });

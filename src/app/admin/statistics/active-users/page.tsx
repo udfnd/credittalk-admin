@@ -4,10 +4,9 @@
 import { useEffect, useState } from 'react';
 
 interface ActiveUser {
-  name: string;
-  nickname: string;
-  phone_number: string;
-  last_seen_at: string;
+  user_name: string;
+  user_email: string;
+  login_at: string;
 }
 
 export default function ActiveUsersPage() {
@@ -17,7 +16,8 @@ export default function ActiveUsersPage() {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      setIsLoading(true);
+      // 초기 로딩 시에만 true로 설정합니다.
+      if (users.length === 0) setIsLoading(true);
       try {
         const response = await fetch('/api/admin/statistics/active-users');
         if (!response.ok) throw new Error('데이터 로딩 실패');
@@ -35,32 +35,38 @@ export default function ActiveUsersPage() {
     const interval = setInterval(fetchUsers, 10000);
     return () => clearInterval(interval);
 
-  }, []);
+  }, []); // 최초 마운트 시에만 실행
 
-  if (isLoading && users.length === 0) return <p>로딩 중...</p>;
-  if (error) return <p className="text-red-500">{error}</p>;
+  if (isLoading) return <p className="text-center p-8">로딩 중...</p>;
+  if (error) return <p className="text-center text-red-500 p-8">{error}</p>;
 
   return (
     <div className="bg-white shadow-md rounded-lg overflow-x-auto">
+      <div className="p-4 border-b">
+        <h2 className="text-lg font-semibold">현재 접속자 ({users.length}명)</h2>
+      </div>
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
         <tr>
           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">휴대전화</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">마지막 활동</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이메일</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">최근 접속 시간</th>
         </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-        {users.map((user) => (
-          <tr key={user.phone_number}>
-            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.name} ({user.nickname})</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.phone_number}</td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(user.last_seen_at).toLocaleString()}</td>
+        {users.length > 0 ? users.map((user, index) => (
+          <tr key={`${user.user_email}-${index}`}>
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.user_name}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.user_email}</td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(user.login_at).toLocaleString()}</td>
           </tr>
-        ))}
+        )) : (
+          <tr>
+            <td colSpan={3} className="p-4 text-center text-gray-500">현재 활동 중인 사용자가 없습니다.</td>
+          </tr>
+        )}
         </tbody>
       </table>
-      {users.length === 0 && !isLoading && <p className="p-4 text-center text-gray-500">현재 활동 중인 사용자가 없습니다.</p>}
     </div>
   );
 }

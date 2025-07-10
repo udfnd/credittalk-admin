@@ -32,9 +32,10 @@ export async function GET(request: NextRequest) {
   try {
     if (getSource) {
       // 가입 경로 데이터 요청
+      // 가입 경로 판별을 위해 naver_id와 phone_number를 추가로 조회합니다.
       const { data, error } = await supabaseAdmin
         .from('users')
-        .select('id, name, auth_user_id, sign_up_source, created_at')
+        .select('id, name, auth_user_id, created_at, naver_id, phone_number')
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
 
@@ -46,12 +47,30 @@ export async function GET(request: NextRequest) {
       if(authError) throw new Error(authError.message);
 
       const emailMap = new Map(authUsers.users.map(u => [u.id, u.email]));
-      const result = data.map(u => ({ ...u, email: emailMap.get(u.auth_user_id) || '' }));
+
+      // 최종 결과를 담을 배열
+      const result = data.map(u => {
+        let signUpSource = '일반'; // 기본값
+
+        if (u.naver_id) {
+          signUpSource = 'naver'; // naver_id가 있으면 '네이버'
+        } else if (!u.naver_id && !u.phone_number) {
+          signUpSource = 'kakao'; // naver_id와 phone_number가 모두 없으면 '카카오'
+        }
+
+        return {
+          id: u.id,
+          name: u.name,
+          email: emailMap.get(u.auth_user_id) || '',
+          created_at: u.created_at,
+          sign_up_source: signUpSource, // 동적으로 결정된 가입 경로
+        };
+      });
 
       return NextResponse.json(result);
     }
 
-    // 기존 사용자 목록 조회 로직
+    // 기존 사용자 목록 조회 로직 (검색 기능)
     let query = supabaseAdmin
       .from('users')
       .select('*')
