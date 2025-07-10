@@ -22,6 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/all-posts', label: '통합 게시물 관리' },
     { href: '/admin/posts', label: '커뮤니티 글 관리' },
     { href: '/admin/reports', label: '신고 분석 및 관리' },
+    { href: '/admin/statistics/sign-ups', label: '통계 관리' },
   ];
 
   return (
