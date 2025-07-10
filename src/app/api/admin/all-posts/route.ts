@@ -59,7 +59,7 @@ export async function GET() {
     (incidentPhotos || []).forEach(p => p.uploader_id && userIdsToFetch.add(p.uploader_id));
     (newCrimeCases || []).forEach(p => p.user_id && userIdsToFetch.add(p.user_id));
 
-    let userMap = new Map<string, string>();
+    const userMap = new Map<string, string>();
 
     // 조회할 ID가 있는 경우에만 사용자 정보를 가져옵니다.
     if (userIdsToFetch.size > 0) {

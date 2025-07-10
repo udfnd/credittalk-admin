@@ -3,7 +3,6 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 interface UserProfile {
   name: string;
@@ -100,38 +99,6 @@ export default function UserActivityPage() {
     // 최신순으로 정렬
     return combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [activity]);
-
-  // --- 게시판 종류에 따라 동적으로 링크를 생성하는 함수 ---
-  const getPostLink = (post: GenericPost): string => {
-    switch (post.boardType) {
-      case 'community':
-        return `/admin/posts/${post.id}/edit`;
-      case 'review':
-        return `/admin/reviews/${post.id}/edit`;
-      case 'incident-photo':
-        return `/admin/incident-photos/${post.id}/edit`;
-      case 'help-question':
-        return `/admin/help-desk/${post.id}`;
-      // 다른 게시판 타입에 대한 링크도 필요 시 추가
-      // case 'arrest-news':
-      //   return `/admin/arrest-news/${post.id}/edit`;
-      default:
-        return '#'; // 링크가 없는 경우
-    }
-  };
-  // 댓글이 어느 게시글에 달렸는지에 따라 링크를 다르게 생성
-  const getCommentLink = (comment: UserComment): string => {
-    if (comment.board_type === 'help_questions' && comment.question_id) {
-      return `/admin/help-desk/${comment.question_id}`;
-    }
-    // 'community_posts' 등 다른 게시판 댓글 링크 로직 추가 가능
-    if (comment.board_type === 'community_posts' && comment.post_id) {
-      return `/admin/posts/${comment.post_id}/edit`;
-    }
-    // 기본 링크 (혹은 정의되지 않은 경우)
-    return '#';
-  };
-
 
   if (isLoading) return <div className="text-center p-8">로딩 중...</div>;
   if (error) return <div className="text-center text-red-500 p-8">오류: {error}</div>;
