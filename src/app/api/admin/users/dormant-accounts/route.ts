@@ -33,7 +33,6 @@ export async function GET() {
     if (error) throw new Error(error.message);
 
     // auth.users 테이블에서 이메일 정보를 가져와 합칩니다.
-    const userIds = data.map(u => u.auth_user_id);
     const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
       perPage: 1000,
