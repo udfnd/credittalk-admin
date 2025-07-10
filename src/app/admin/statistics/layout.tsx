@@ -15,6 +15,7 @@ export default function StatisticsLayout({ children }: { children: React.ReactNo
     { href: '/admin/statistics/login-logs', label: '접속자 통계' },
     { href: '/admin/statistics/page-views', label: '게시판별 접속자' },
     { href: '/admin/statistics/crime-summary', label: '금융범죄 사기 통계' },
+    { href: '/admin/statistics/scammer-details', label: '사기 정보 목록' },
   ];
 
   return (
