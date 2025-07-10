@@ -16,9 +16,9 @@ async function isRequestFromAdmin(): Promise<boolean> {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const userAuthId = params.id; // This is auth_user_id (UUID)
+  const userAuthId = (await params).id; // This is auth_user_id (UUID)
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
