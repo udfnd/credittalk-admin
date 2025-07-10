@@ -67,7 +67,7 @@ export default function ManagePostsPage() {
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {posts.map(post => (
             <tr key={post.id}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{post.title}</td>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/posts/${post.id}/edit`} className=" hover:text-indigo-900">{post.title}</Link></td>
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.author_name}</td>
               <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.category}</td>
               <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.views}</td>

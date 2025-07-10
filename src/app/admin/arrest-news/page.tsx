@@ -67,7 +67,7 @@ export default function ManageArrestNewsPage() {
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {news.map(item => (
             <tr key={item.id}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.title}</td>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/arrest-news/${item.id}/edit`} className=" hover:text-indigo-900">{item.title}</Link></td>
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.author_name}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {item.is_published

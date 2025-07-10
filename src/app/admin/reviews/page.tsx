@@ -68,7 +68,7 @@ export default function ManageReviewsPage() {
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {reviews.map(review => (
             <tr key={review.id}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{review.title}</td>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/reviews/${review.id}/edit`} className="hover:text-indigo-900">{review.title}</Link></td>
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{review.author_name}</td>
               <td data-label="평점" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{'⭐'.repeat(review.rating)}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">

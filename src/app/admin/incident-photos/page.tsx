@@ -76,7 +76,7 @@ export default function ManageIncidentPhotosPage() {
               <td data-label="이미지" className="px-6 py-4">
                 <img src={item.image_url} alt={item.title} className="w-24 h-16 object-cover rounded" />
               </td>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.title}</td>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/incident-photos/${item.id}/edit`} className=" hover:text-indigo-900">{item.title}</Link></td>
               <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category || 'N/A'}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {item.is_published

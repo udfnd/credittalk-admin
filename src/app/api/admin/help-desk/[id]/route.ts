@@ -23,10 +23,10 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
-  // 질문 조회
+  // view 대신 원본 테이블에서 모든 정보를 조회하도록 변경
   const { data: question, error: questionError } = await supabaseAdmin
-    .from('help_questions_with_author') // 위에서 생성한 뷰 사용
-    .select('*')
+    .from('help_questions') // `help_questions_with_author` view 대신 `help_questions` 테이블 직접 조회
+    .select('*') // 모든 컬럼 선택
     .eq('id', id)
     .single();
 
@@ -34,15 +34,14 @@ export async function GET(
     return new NextResponse(`Question not found: ${questionError.message}`, { status: 404 });
   }
 
-  // 답변 조회 (없을 수도 있음)
+  // 답변 조회 (기존과 동일)
   const { data: answer, error: answerError } = await supabaseAdmin
     .from('help_answers')
     .select('*')
     .eq('question_id', id)
     .single();
 
-  // 답변 조회 시 에러가 발생해도 괜찮음 (답변이 아직 없는 경우)
-  if (answerError && answerError.code !== 'PGRST116') { // PGRST116: a single item was requested, but zero rows were returned
+  if (answerError && answerError.code !== 'PGRST116') {
     console.warn(`Could not fetch answer: ${answerError.message}`);
   }
 

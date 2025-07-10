@@ -1,8 +1,8 @@
 // src/app/admin/users/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-// createClientComponentClient 는 목록 조회에 더 이상 필요 없으므로 삭제해도 됩니다.
+import { useEffect, useState, FormEvent } from 'react';
+import Link from 'next/link';
 
 interface UserProfile {
   id: number;
@@ -15,17 +15,16 @@ interface UserProfile {
 }
 
 export default function ManageUsersPage() {
-  // const supabase = createClientComponentClient(); // 더 이상 필요 없음
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // 데이터를 가져오는 함수를 분리
-  const fetchUsers = async () => {
+  const fetchUsers = async (query = '') => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/admin/users'); // 새로 만든 API 라우트 호출
+      const response = await fetch(`/api/admin/users?search=${encodeURIComponent(query)}`);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -49,6 +48,11 @@ export default function ManageUsersPage() {
     fetchUsers();
   }, []);
 
+  const handleSearch = (e: FormEvent) => {
+    e.preventDefault();
+    fetchUsers(searchQuery);
+  };
+
   const handleDelete = async (userAuthId: string, userName: string) => {
     if (window.confirm(`정말로 '${userName}' 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
       try {
@@ -60,8 +64,7 @@ export default function ManageUsersPage() {
           throw new Error(await response.text() || 'Failed to delete user.');
         }
 
-        // 삭제 성공 시, 목록을 다시 불러와서 화면을 갱신합니다.
-        await fetchUsers();
+        await fetchUsers(searchQuery); // 현재 검색 상태를 유지하며 목록 새로고침
         alert('사용자가 성공적으로 삭제되었습니다.');
 
       } catch (err) {
@@ -77,6 +80,25 @@ export default function ManageUsersPage() {
   return (
     <div className="container mx-auto p-0 md:p-4">
       <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">회원 관리</h1>
+
+      <div className="mb-6">
+        <form onSubmit={handleSearch} className="flex gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="이름 또는 닉네임으로 검색..."
+            className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+          >
+            검색
+          </button>
+        </form>
+      </div>
+
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
@@ -92,7 +114,11 @@ export default function ManageUsersPage() {
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {users.map(user => (
             <tr key={user.id}>
-              <td data-label="이름" className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.name}</td>
+              <td data-label="이름" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <Link href={`/admin/users/${user.auth_user_id}/activity`} className="text-indigo-600 hover:text-indigo-900 hover:underline">
+                  {user.name}
+                </Link>
+              </td>
               <td data-label="연락처" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.phone_number}</td>
               <td data-label="직업군" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.job_type}</td>
               <td data-label="관리자" className="px-6 py-4 whitespace-nowrap text-sm">
@@ -106,10 +132,10 @@ export default function ManageUsersPage() {
               <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <button
                   onClick={() => handleDelete(user.auth_user_id, user.name)}
-                  className="text-red-600 hover:text-red-900"
-                  disabled={user.is_admin}
+                  className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={user.is_admin} // 관리자 계정은 삭제 불가
                 >
-                  삭제
+                  차단
                 </button>
               </td>
             </tr>

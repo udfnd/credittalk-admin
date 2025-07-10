@@ -12,13 +12,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navLinks = [
     { href: '/admin', label: '홈' },
     { href: '/admin/notices', label: '공지사항 관리' },
-    { href: '/admin/incident-photos', label: '사건 사진자료 관리' },
     { href: '/admin/arrest-news', label: '검거소식 관리' },
-    { href: '/admin/reports', label: '신고 분석 및 관리' },
-    { href: '/admin/help-desk', label: '고객 문의 관리' },
-    { href: '/admin/users', label: '회원 관리' },
     { href: '/admin/reviews', label: '후기 관리' },
+    { href: '/admin/incident-photos', label: '사건 사진자료 관리' },
+    { href: '/admin/help-desk', label: '헬프 상담게시판 관리' },
+    { href: '/admin/users', label: '회원 관리' },
+    { href: '/admin/all-posts', label: '통합 게시물 관리' },
     { href: '/admin/posts', label: '커뮤니티 글 관리' },
+    { href: '/admin/reports', label: '신고 분석 및 관리' },
   ];
 
   return (
