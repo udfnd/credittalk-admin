@@ -28,9 +28,9 @@ function getTableName(type: string): string | null {
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
-  const { type, id } = params;
+  const { type, id } = await params;
 
   if (!(await isRequestFromAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
