@@ -3,6 +3,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Link from 'next/link';
+import AdminUserLayout from '@/components/AdminUserLayout'; // 새로 만든 레이아웃 import
 
 interface UserProfile {
   id: number;
@@ -74,13 +75,9 @@ export default function ManageUsersPage() {
     }
   };
 
-  if (isLoading) return <p className="text-center py-8">사용자 목록을 불러오는 중...</p>;
-  if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
-
   return (
-    <div className="container mx-auto p-0 md:p-4">
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">회원 관리</h1>
-
+    // AdminUserLayout으로 전체 컨텐츠를 감쌉니다.
+    <AdminUserLayout>
       <div className="mb-6">
         <form onSubmit={handleSearch} className="flex gap-2">
           <input
@@ -100,49 +97,53 @@ export default function ManageUsersPage() {
       </div>
 
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 responsive-table">
-          <thead className="bg-gray-50">
-          <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">직업군</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">관리자</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">가입일</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
-          </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
-          {users.map(user => (
-            <tr key={user.id}>
-              <td data-label="이름" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                <Link href={`/admin/users/${user.auth_user_id}/activity`} className="text-indigo-600 hover:text-indigo-900 hover:underline">
-                  {user.name}
-                </Link>
-              </td>
-              <td data-label="연락처" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.phone_number}</td>
-              <td data-label="직업군" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.job_type}</td>
-              <td data-label="관리자" className="px-6 py-4 whitespace-nowrap text-sm">
-                {user.is_admin ? (
-                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Admin</span>
-                ) : (
-                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">User</span>
-                )}
-              </td>
-              <td data-label="가입일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(user.created_at).toLocaleDateString()}</td>
-              <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <button
-                  onClick={() => handleDelete(user.auth_user_id, user.name)}
-                  className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={user.is_admin} // 관리자 계정은 삭제 불가
-                >
-                  차단
-                </button>
-              </td>
+        {isLoading && <p className="p-4">로딩 중...</p>}
+        {error && <p className="p-4 text-red-500">{error}</p>}
+        {!isLoading && !error && (
+          <table className="min-w-full divide-y divide-gray-200 responsive-table">
+            <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">직업군</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">관리자</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">가입일</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
             </tr>
-          ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
+            {users.map(user => (
+              <tr key={user.id}>
+                <td data-label="이름" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <Link href={`/admin/users/${user.auth_user_id}/activity`} className="text-indigo-600 hover:text-indigo-900 hover:underline">
+                    {user.name}
+                  </Link>
+                </td>
+                <td data-label="연락처" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.phone_number}</td>
+                <td data-label="직업군" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.job_type}</td>
+                <td data-label="관리자" className="px-6 py-4 whitespace-nowrap text-sm">
+                  {user.is_admin ? (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Admin</span>
+                  ) : (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">User</span>
+                  )}
+                </td>
+                <td data-label="가입일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(user.created_at).toLocaleDateString()}</td>
+                <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <button
+                    onClick={() => handleDelete(user.auth_user_id, user.name)}
+                    className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={user.is_admin} // 관리자 계정은 삭제 불가
+                  >
+                    차단
+                  </button>
+                </td>
+              </tr>
+            ))}
+            </tbody>
+          </table>
+        )}
       </div>
-    </div>
+    </AdminUserLayout>
   );
 }

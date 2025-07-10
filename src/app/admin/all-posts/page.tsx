@@ -2,7 +2,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface UnifiedPost {
@@ -16,7 +15,6 @@ interface UnifiedPost {
 }
 
 export default function AllPostsPage() {
-  const router = useRouter();
   const [posts, setPosts] = useState<UnifiedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
