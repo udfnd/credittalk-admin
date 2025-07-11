@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const title = formData.get('title') as string;
     const imageFile = formData.get('imageFile') as File;
+    const link_url = formData.get('link_url') as string | null; // 추가된 부분
 
     if (!title || !imageFile) {
       console.error("API Route: Missing title or image file.");
@@ -118,6 +119,7 @@ export async function POST(request: Request) {
         image_url: publicUrl,
         is_published,
         uploader_id: null,
+        link_url, // 추가된 부분
       }])
       .select()
       .single();

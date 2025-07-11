@@ -11,6 +11,7 @@ type ArrestNews = {
   content?: string;
   author_name?: string;
   image_url?: string;
+  link_url?: string; // 추가된 부분
   is_published: boolean;
 };
 
@@ -42,12 +43,12 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
     formData.append('content', data.content || '');
     formData.append('author_name', data.author_name || '관리자');
     formData.append('is_published', String(data.is_published));
+    formData.append('link_url', data.link_url || ''); // 추가된 부분
     if (data.imageFile && data.imageFile.length > 0) {
       formData.append('imageFile', data.imageFile[0]);
     }
 
     const url = isEditMode ? `/api/admin/arrest-news/${initialData.id}` : '/api/admin/arrest-news';
-    // 수정 시에는 PUT/POST, 생성 시에는 POST
     const method = isEditMode ? 'POST' : 'POST';
 
     try {
@@ -64,7 +65,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         reset();
       }
 
-      router.refresh(); // 페이지 데이터 새로고침
+      router.refresh();
       if (isEditMode) {
         setTimeout(() => router.push('/admin/arrest-news'), 1500);
       }
@@ -121,6 +122,18 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
             <img src={initialData.image_url} alt={initialData.title} className="max-w-xs mt-1 rounded"/>
           </div>
         )}
+      </div>
+
+      {/* 링크 URL 입력 필드 추가 */}
+      <div>
+        <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
+        <input
+          id="link_url"
+          type="url"
+          placeholder="https://example.com"
+          {...register('link_url')}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+        />
       </div>
 
       <div>

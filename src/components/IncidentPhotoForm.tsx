@@ -11,6 +11,7 @@ type IncidentPhoto = {
   description?: string;
   category?: string;
   image_url?: string;
+  link_url?: string; // 추가된 부분
   is_published: boolean;
 };
 
@@ -41,6 +42,7 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
     formData.append('description', data.description || '');
     formData.append('category', data.category || '');
     formData.append('is_published', String(data.is_published));
+    formData.append('link_url', data.link_url || ''); // 추가된 부분
     if (data.imageFile && data.imageFile.length > 0) {
       formData.append('imageFile', data.imageFile[0]);
     } else if (!isEditMode) {
@@ -131,6 +133,16 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
         <input
           id="category"
           {...register('category')}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+        />
+      </div>
+      <div>
+        <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
+        <input
+          id="link_url"
+          type="url"
+          placeholder="https://example.com"
+          {...register('link_url')}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>

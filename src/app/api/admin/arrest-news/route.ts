@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     const author_name = formData.get('author_name') as string | null;
     const is_published = formData.get('is_published') === 'true';
     const imageFile = formData.get('imageFile') as File | null;
+    const link_url = formData.get('link_url') as string | null; // 추가된 부분
 
     if (!title) {
       return new NextResponse('Title is required', { status: 400 });
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
         author_name: author_name || '관리자',
         is_published,
         image_url: imageUrl,
+        link_url, // 추가된 부분
       })
       .select()
       .single();

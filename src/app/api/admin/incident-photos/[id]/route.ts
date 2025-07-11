@@ -20,6 +20,7 @@ type PhotoUpdate = {
   description: string | null;
   category: string | null;
   is_published: boolean;
+  link_url?: string | null; // 추가된 부분
   image_url?: string | null;
 };
 
@@ -63,6 +64,7 @@ export async function POST(
       description: formData.get('description') as string | null,
       category: formData.get('category') as string | null,
       is_published: formData.get('is_published') === 'true',
+      link_url: formData.get('link_url') as string | null, // 추가된 부분
     };
 
     const imageFile = formData.get('imageFile') as File | null;

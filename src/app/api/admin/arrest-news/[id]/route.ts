@@ -20,7 +20,8 @@ type ArrestNewsUpdate = {
   content: string | null;
   author_name: string | null;
   is_published: boolean;
-  image_url?: string | null; // 이미지는 선택적으로 추가되므로 '?'를 붙입니다.
+  link_url?: string | null; // 추가된 부분
+  image_url?: string | null;
 };
 
 export async function GET(
@@ -61,6 +62,7 @@ export async function POST(
       content: formData.get('content') as string | null,
       author_name: formData.get('author_name') as string | null,
       is_published: formData.get('is_published') === 'true',
+      link_url: formData.get('link_url') as string | null, // 추가된 부분
     };
 
     const imageFile = formData.get('imageFile') as File | null;
