@@ -29,9 +29,9 @@ function getTableAndContentColumn(type: string): { tableName: string | null; con
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
-  const { type, id } = params;
+  const { type, id } = await params;
 
   if (!(await isRequestFromAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -102,9 +102,9 @@ export async function GET(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
-  const { type, id } = params;
+  const { type, id } = await params;
 
   if (!(await isRequestFromAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
