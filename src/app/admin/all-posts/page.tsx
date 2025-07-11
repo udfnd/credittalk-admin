@@ -18,7 +18,6 @@ export default function AllPostsPage() {
   const [posts, setPosts] = useState<UnifiedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // 각 게시물별 댓글 입력을 관리하기 위한 state
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
 
   const fetchPosts = async () => {
@@ -62,12 +61,10 @@ export default function AllPostsPage() {
     }
   };
 
-  // 댓글 입력 핸들러
   const handleCommentChange = (postKey: string, value: string) => {
     setCommentInputs(prev => ({ ...prev, [postKey]: value }));
   };
 
-  // 댓글 제출 핸들러
   const handleCommentSubmit = async (post: UnifiedPost) => {
     const postKey = `${post.type}-${post.id}`;
     const content = commentInputs[postKey];
@@ -83,7 +80,7 @@ export default function AllPostsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           postId: post.id,
-          boardType: post.type,
+          boardType: getTableAndContentColumn(post.type).tableName, // 테이블명 전달
           content: content,
         }),
       });
@@ -94,7 +91,6 @@ export default function AllPostsPage() {
       }
 
       alert('댓글이 성공적으로 작성되었습니다.');
-      // 입력창 비우기
       setCommentInputs(prev => ({ ...prev, [postKey]: '' }));
 
     } catch (err) {
@@ -102,25 +98,23 @@ export default function AllPostsPage() {
     }
   };
 
+  const getTableAndContentColumn = (type: string): { tableName: string | null } => {
+    const tableMap: { [key: string]: { tableName: string } } = {
+      community_posts: { tableName: 'community_posts'},
+      reviews: { tableName: 'reviews' },
+      incident_photos: { tableName: 'incident_photos' },
+      new_crime_cases: { tableName: 'new_crime_cases' },
+      help_questions: { tableName: 'help_questions' },
+      notices: { tableName: 'notices' },
+      arrest_news: { tableName: 'arrest_news' },
+    };
+    return tableMap[type] || { tableName: null };
+  }
+
 
   const getPostLink = (post: UnifiedPost): string => {
-    switch (post.type) {
-      case 'community_posts':
-        return `/admin/posts/${post.id}/edit`;
-      case 'reviews':
-        return `/admin/reviews/${post.id}/edit`;
-      case 'incident_photos':
-        return `/admin/incident-photos/${post.id}/edit`;
-      case 'help_questions':
-        return `/admin/help-desk/${post.id}`;
-      case 'notices':
-        return `/admin/notices/${post.id}/edit`;
-      case 'arrest_news':
-        return `/admin/arrest-news/${post.id}/edit`;
-      case 'new_crime_cases':
-      default:
-        return '#';
-    }
+    // 상세 페이지로 가는 링크로 통합
+    return `/admin/all-posts/${post.type}/${post.id}`;
   };
 
   const getAuthorLink = (userId: string): string => {
@@ -135,23 +129,23 @@ export default function AllPostsPage() {
       <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">통합 게시물 관리</h1>
 
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">게시판</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목 (클릭하여 상세보기)</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">댓글 작성</th>
           </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {posts.map(post => {
             const postKey = `${post.type}-${post.id}`;
             return (
               <tr key={postKey}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <td data-label="게시판" className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                     post.type === 'help_questions' ? 'bg-red-100 text-red-800' :
                       post.type === 'reviews' ? 'bg-green-100 text-green-800' :
@@ -160,24 +154,20 @@ export default function AllPostsPage() {
                     {post.type_ko}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-sm">
-                  {getPostLink(post) !== '#' ? (
-                    <Link href={getPostLink(post)} className="hover:underline">
-                      {post.title}
-                    </Link>
-                  ) : (
-                    <span>{post.title}</span>
-                  )}
+                <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-sm">
+                  <Link href={getPostLink(post)} className="hover:underline">
+                    {post.title}
+                  </Link>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <Link href={getAuthorLink(post.user_id)} className="hover:underline text-indigo-600">
                     {post.author_name}
                   </Link>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(post.created_at).toLocaleDateString()}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
                   <button
                     onClick={() => handleDelete(post)}
                     className="text-red-600 hover:text-red-900"
@@ -185,18 +175,18 @@ export default function AllPostsPage() {
                     삭제
                   </button>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <div className="flex items-center gap-2">
+                <td data-label="댓글 작성" className="px-6 py-4 whitespace-nowrap text-sm">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <textarea
                       value={commentInputs[postKey] || ''}
                       onChange={(e) => handleCommentChange(postKey, e.target.value)}
                       placeholder="댓글을 입력하세요..."
-                      rows={1}
+                      rows={2}
                       className="w-full px-2 py-1 border border-gray-300 rounded-md shadow-sm text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     <button
                       onClick={() => handleCommentSubmit(post)}
-                      className="px-3 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-md hover:bg-indigo-700"
+                      className="px-3 py-2 sm:py-1 bg-indigo-600 text-white text-xs font-semibold rounded-md hover:bg-indigo-700 flex-shrink-0"
                     >
                       등록
                     </button>

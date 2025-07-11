@@ -1,0 +1,94 @@
+// src/app/admin/new-crime-cases/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+
+interface NewCrimeCase {
+  id: number;
+  created_at: string;
+  method: string;
+  is_published: boolean;
+  views: number;
+}
+
+export default function ManageNewCrimeCasesPage() {
+  const [cases, setCases] = useState<NewCrimeCase[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCases = async () => {
+    setIsLoading(true);
+    const response = await fetch('/api/admin/new-crime-cases');
+    if (!response.ok) {
+      setError('데이터를 불러오는 데 실패했습니다.');
+      setIsLoading(false);
+      return;
+    }
+    const data = await response.json();
+    setCases(data);
+    setIsLoading(false);
+    setError(null);
+  };
+
+  useEffect(() => {
+    fetchCases();
+  }, []);
+
+  const handleDelete = async (id: number) => {
+    if (window.confirm('정말로 이 사례를 삭제하시겠습니까?')) {
+      const response = await fetch(`/api/admin/new-crime-cases/${id}`, { method: 'DELETE' });
+      if(response.ok) {
+        await fetchCases(); // 목록 새로고침
+      } else {
+        alert('삭제에 실패했습니다.');
+      }
+    }
+  };
+
+  if (isLoading) return <p className="text-center py-8">목록을 불러오는 중...</p>;
+  if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
+
+  return (
+    <div className="container mx-auto p-0 md:p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">신종범죄 관리</h1>
+        <Link href="/admin/new-crime-cases/create" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+          새 사례 작성
+        </Link>
+      </div>
+      <div className="bg-white shadow-md rounded-lg overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 responsive-table">
+          <thead className="bg-gray-50">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">범죄 수법</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">조회수</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
+          </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
+          {cases.map(item => (
+            <tr key={item.id}>
+              <td data-label="범죄 수법" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/new-crime-cases/${item.id}/edit`} className=" hover:text-indigo-900">{item.method}</Link></td>
+              <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
+                {item.is_published
+                  ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">게시됨</span>
+                  : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">숨김</span>
+                }
+              </td>
+              <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.views}</td>
+              <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.created_at).toLocaleDateString()}</td>
+              <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                <Link href={`/admin/new-crime-cases/${item.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
+                <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
+              </td>
+            </tr>
+          ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

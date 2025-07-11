@@ -17,6 +17,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/arrest-news', label: '검거소식 관리' },
     { href: '/admin/reviews', label: '후기 관리' },
     { href: '/admin/incident-photos', label: '사건 사진자료 관리' },
+    { href: '/admin/new-crime-cases', label: '신종범죄 관리' }, // 추가된 부분
     { href: '/admin/help-desk', label: '헬프 상담게시판 관리' },
     { href: '/admin/users', label: '회원 설정' },
     { href: '/admin/all-posts', label: '통합 게시물 관리' },
