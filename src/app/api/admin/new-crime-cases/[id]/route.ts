@@ -23,9 +23,9 @@ type NewCrimeCaseUpdate = {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: {params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -45,9 +45,9 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: {params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -110,9 +110,9 @@ export async function POST(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: {params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
