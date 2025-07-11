@@ -4,33 +4,66 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { analysisOptionsData } from '@/lib/analysisOptions'; // 경로 확인
+import { analysisOptionsData } from '@/lib/analysisOptions';
 
-// ScammerReport 타입 정의 (실제 테이블 컬럼에 맞춰 확장)
+// 스키마의 모든 상세 정보를 포함하도록 인터페이스 확장
 interface ScammerReport {
   id: number;
   created_at: string;
-  name: string | null;
-  phone_number: string | null;
-  national_id: string | null;
-  account_number: string | null;
-  address: string | null;
-  category: string; // 이 값으로 analysisOptionsData의 키를 찾음
+  category: string;
   description: string | null;
-  ip_address: string | null;
-  company_type: string | null;
-  scam_report_source: string | null;
   nickname: string | null;
-  perpetrator_dialogue_trigger: string | null;
-  perpetrator_contact_path: string | null;
+  reporter_id: string | null;
+  reporter_email: string | null;
+
+  // 피해 정보
+  damage_amount: number | null;
+  no_damage_amount: boolean | null;
   victim_circumstances: string | null;
-  traded_item_category: string | null;
-  perpetrator_identified: boolean | null;
+  detailed_crime_type: string | null;
+  damage_path: string | null;
+  damaged_item: string | null;
+
+  // 피의자 정보
+  phone_numbers: string[] | null;
+  damage_accounts: {
+    bankName: string;
+    accountNumber: string;
+    accountHolderName: string;
+  }[] | null;
+  impersonated_person: string | null;
+  impersonated_phone_number: string | null;
+  site_name: string | null;
+
+  // 증거 및 기타 정보
+  nickname_evidence_url: string | null;
+  traded_item_image_urls: string[] | null;
+
+  // 분석 정보
   analysis_result: string | null;
   analysis_message: string | null;
   analyzed_at: string | null;
   analyzer_id: string | null;
 }
+
+// 정보 섹션을 렌더링하기 위한 헬퍼 컴포넌트
+const InfoSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+    <h2 className="text-xl font-semibold mb-4 border-b pb-2 text-gray-800">{title}</h2>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+      {children}
+    </div>
+  </div>
+);
+
+// 개별 정보 항목을 렌더링하기 위한 헬퍼 컴포넌트
+const InfoItem = ({ label, value }: { label: string; value: React.ReactNode | string | null }) => (
+  <div>
+    <dt className="text-sm font-medium text-gray-500">{label}</dt>
+    <dd className="mt-1 text-base text-gray-900 break-words">{value || <span className="text-gray-400">N/A</span>}</dd>
+  </div>
+);
+
 
 export default function AnalyzeReportPage() {
   const supabase = createClientComponentClient();
@@ -45,44 +78,41 @@ export default function AnalyzeReportPage() {
   const [analysisMessage, setAnalysisMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!reportId) {
-      setError('Report ID is missing.');
-      setIsLoading(false);
-      return;
-    }
+  const fetchReportDetails = async () => {
+    if (!reportId) return;
+    setIsLoading(true);
+    setError(null);
 
-    const fetchReportAndDecrypt = async () => {
-      setIsLoading(true);
-      setError(null);
+    const { data, error: fetchError } = await supabase
+      .from('admin_scammer_reports_view')
+      .select('*')
+      .eq('id', reportId)
+      .single();
 
-      const { data, error: fetchError } = await supabase
-        .from('admin_scammer_reports_view') // 복호화된 데이터가 포함된 뷰 사용
-        .select('*')
-        .eq('id', reportId)
-        .single();
+    if (fetchError) {
+      console.error("Error fetching report details:", fetchError);
+      setError(fetchError.message);
+      setReport(null);
+    } else if (data) {
+      const typedData = data as ScammerReport;
+      setReport(typedData);
+      setSelectedAnalysisResult(typedData.analysis_result || '');
 
-      if (fetchError) {
-        console.error("Error fetching report details:", fetchError);
-        setError(fetchError.message);
-        setReport(null);
-      } else if (data) {
-        setReport(data as ScammerReport);
-        setSelectedAnalysisResult(data.analysis_result || '');
-        // 분석 결과가 이미 있다면, 해당 결과에 맞는 메시지를 불러오거나 DB의 메시지 사용
-        if (data.analysis_result) {
-          const categoryOptions = analysisOptionsData[data.category as keyof typeof analysisOptionsData] || [];
-          const preselectedOption = categoryOptions.find(opt => opt.result === data.analysis_result);
-          setAnalysisMessage(data.analysis_message || preselectedOption?.message || '');
-        } else {
-          setAnalysisMessage('');
-        }
+      if (typedData.analysis_result) {
+        const categoryOptions = analysisOptionsData[typedData.category as keyof typeof analysisOptionsData] || [];
+        const preselectedOption = categoryOptions.find(opt => opt.result === typedData.analysis_result);
+        setAnalysisMessage(typedData.analysis_message || preselectedOption?.message || '');
+      } else {
+        setAnalysisMessage('');
       }
-      setIsLoading(false);
-    };
+    }
+    setIsLoading(false);
+  };
 
-    fetchReportAndDecrypt();
+  useEffect(() => {
+    fetchReportDetails();
   }, [reportId, supabase]);
+
 
   const handleResultChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const resultValue = e.target.value;
@@ -98,7 +128,7 @@ export default function AnalyzeReportPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedAnalysisResult) { // 메시지는 비워둘 수 있지만 결과는 선택해야 함
+    if (!selectedAnalysisResult) {
       alert('분석 결과를 선택해주세요.');
       return;
     }
@@ -106,12 +136,10 @@ export default function AnalyzeReportPage() {
     try {
       const response = await fetch(`/api/admin/reports/${reportId}/analyze`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           analysis_result: selectedAnalysisResult,
-          analysis_message: analysisMessage, // 사용자가 수정한 메시지 포함 가능
+          analysis_message: analysisMessage,
         }),
       });
       if (!response.ok) {
@@ -119,19 +147,11 @@ export default function AnalyzeReportPage() {
         throw new Error(errData.error || 'Failed to update analysis.');
       }
       alert('분석 결과가 성공적으로 저장되었습니다.');
-      // router.push('/admin/reports'); // 목록 페이지로 이동하거나 현재 페이지 유지
-      // 현재 페이지를 유지하며 업데이트된 정보를 보여주려면 fetchReportAndDecrypt() 다시 호출
-      if (reportId) {
-        const { data } = await supabase
-          .from('admin_scammer_reports_view')
-          .select('*')
-          .eq('id', reportId)
-          .single();
-        if (data) setReport(data as ScammerReport);
-      }
-
+      // 최신 정보로 페이지 새로고침
+      await fetchReportDetails();
     } catch (err) {
-      alert(`오류: ${err}`);
+      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류 발생';
+      alert(`오류: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -147,17 +167,29 @@ export default function AnalyzeReportPage() {
     <div className="container mx-auto p-0 md:p-4">
       <h1 className="text-2xl md:text-3xl font-bold mb-6">사기 신고 분석 (ID: {report.id})</h1>
 
-      <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-3">신고 정보 요약</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 break-words">
-          <p><strong>카테고리:</strong> {report.category}</p>
-          <p><strong>신고일:</strong> {new Date(report.created_at).toLocaleString()}</p>
-          <p><strong>이름:</strong> {report.name || 'N/A'}</p>
-          <p><strong>연락처:</strong> {report.phone_number || 'N/A'}</p>
-          {/* 필요시 더 많은 정보 표시 */}
-          <p className="md:col-span-2"><strong>상세 설명:</strong> {report.description || 'N/A'}</p>
-        </div>
-      </div>
+      <InfoSection title="핵심 정보">
+        <InfoItem label="신고 카테고리" value={<span className="font-bold text-lg text-red-600">{report.category}</span>} />
+        <InfoItem label="신고일" value={new Date(report.created_at).toLocaleString()} />
+        <InfoItem label="신고자 닉네임" value={report.nickname} />
+        <InfoItem label="신고자 이메일" value={report.reporter_email} />
+      </InfoSection>
+
+      <InfoSection title="피해 정보">
+        <InfoItem label="피해 금액" value={report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'} />
+        <InfoItem label="세부 피해 유형" value={report.detailed_crime_type} />
+        <InfoItem label="피해 경로" value={report.damage_path} />
+        <InfoItem label="피해 품목" value={report.damaged_item} />
+        <InfoItem label="피해자 특정 정황" value={<p className="whitespace-pre-wrap">{report.victim_circumstances}</p>} />
+        <InfoItem label="신고 내용" value={<p className="whitespace-pre-wrap">{report.description}</p>} />
+      </InfoSection>
+
+      <InfoSection title="피의자 정보">
+        <InfoItem label="연락처" value={report.phone_numbers?.map((p, i) => <div key={i}>{p}</div>)} />
+        <InfoItem label="계좌 정보" value={report.damage_accounts?.map((acc, i) => <div key={i}>{acc.bankName} | {acc.accountHolderName} | {acc.accountNumber}</div>)} />
+        <InfoItem label="사칭된 인물" value={report.impersonated_person} />
+        <InfoItem label="사칭된 연락처" value={report.impersonated_phone_number} />
+        <InfoItem label="사이트 명" value={report.site_name} />
+      </InfoSection>
 
       <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6">
         <h2 className="text-xl font-semibold mb-4">분석 입력</h2>
@@ -199,7 +231,7 @@ export default function AnalyzeReportPage() {
 
         <button
           type="submit"
-          disabled={isSubmitting || !selectedAnalysisResult} // 결과가 선택되지 않으면 비활성화
+          disabled={isSubmitting || !selectedAnalysisResult}
           className="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
           {isSubmitting ? '저장 중...' : '분석 결과 저장'}
