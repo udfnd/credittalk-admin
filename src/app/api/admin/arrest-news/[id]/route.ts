@@ -20,8 +20,8 @@ type ArrestNewsUpdate = {
   content: string | null;
   author_name: string | null;
   is_published: boolean;
-  link_url?: string | null; // 추가된 부분
-  image_url?: string | null;
+  link_url?: string | null;
+  image_urls?: string[] | null; // image_url -> image_urls
 };
 
 export async function GET(
@@ -56,31 +56,40 @@ export async function POST(
 
   try {
     const formData = await request.formData();
-
     const updates: ArrestNewsUpdate = {
       title: formData.get('title') as string,
       content: formData.get('content') as string | null,
       author_name: formData.get('author_name') as string | null,
       is_published: formData.get('is_published') === 'true',
-      link_url: formData.get('link_url') as string | null, // 추가된 부분
+      link_url: formData.get('link_url') as string | null,
     };
 
-    const imageFile = formData.get('imageFile') as File | null;
+    const imageFiles = formData.getAll('imageFile') as File[]; // getAll로 변경
     const BUCKET_NAME = 'arrest-news-images';
 
-    if (imageFile && imageFile.size > 0) {
-      // TODO: 기존 이미지 삭제 로직 추가 (선택 사항)
-      const fileName = `${uuidv4()}-${imageFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .upload(fileName, imageFile);
+    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
+      // 기존 이미지 삭제 로직 추가
+      const { data: currentNews } = await supabaseAdmin.from('arrest_news').select('image_urls').eq('id', id).single();
+      if (currentNews?.image_urls && currentNews.image_urls.length > 0) {
+        const oldImageNames = currentNews.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+        if (oldImageNames.length > 0) {
+          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
+        }
+      }
 
-      if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
+      const newImageUrls: string[] = [];
+      for (const imageFile of imageFiles) {
+        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+          .from(BUCKET_NAME)
+          .upload(fileName, imageFile);
 
-      const { data: { publicUrl } } = supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(uploadData.path);
-      updates.image_url = publicUrl;
+        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
+
+        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
+        if (publicUrl) newImageUrls.push(publicUrl);
+      }
+      updates.image_urls = newImageUrls;
     }
 
     const { error } = await supabaseAdmin

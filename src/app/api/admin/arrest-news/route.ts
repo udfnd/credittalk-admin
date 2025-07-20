@@ -31,10 +31,7 @@ export async function GET() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      throw new Error(error.message);
-    }
-
+    if (error) throw new Error(error.message);
     return NextResponse.json(data);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -54,34 +51,29 @@ export async function POST(request: NextRequest) {
     const content = formData.get('content') as string | null;
     const author_name = formData.get('author_name') as string | null;
     const is_published = formData.get('is_published') === 'true';
-    const imageFile = formData.get('imageFile') as File | null;
-    const link_url = formData.get('link_url') as string | null; // 추가된 부분
+    const imageFiles = formData.getAll('imageFile') as File[]; // getAll로 변경
+    const link_url = formData.get('link_url') as string | null;
 
     if (!title) {
       return new NextResponse('Title is required', { status: 400 });
     }
 
-    let imageUrl: string | null = null;
+    const imageUrls: string[] = []; // URL을 담을 배열
 
-    if (imageFile && imageFile.size > 0) {
+    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
       const BUCKET_NAME = 'arrest-news-images';
-      const fileName = `${uuidv4()}-${imageFile.name}`;
+      for (const imageFile of imageFiles) {
+        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabaseAdmin
+          .storage
+          .from(BUCKET_NAME)
+          .upload(fileName, imageFile);
 
-      const { data: uploadData, error: uploadError } = await supabaseAdmin
-        .storage
-        .from(BUCKET_NAME)
-        .upload(fileName, imageFile);
+        if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
 
-      if (uploadError) {
-        throw new Error(`Storage Error: ${uploadError.message}`);
+        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
+        if (publicUrl) imageUrls.push(publicUrl);
       }
-
-      const { data: { publicUrl } } = supabaseAdmin
-        .storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(uploadData.path);
-
-      imageUrl = publicUrl;
     }
 
     const { data, error } = await supabaseAdmin
@@ -91,8 +83,8 @@ export async function POST(request: NextRequest) {
         content,
         author_name: author_name || '관리자',
         is_published,
-        image_url: imageUrl,
-        link_url, // 추가된 부분
+        image_urls: imageUrls.length > 0 ? imageUrls : null, // 배열 저장
+        link_url,
       })
       .select()
       .single();

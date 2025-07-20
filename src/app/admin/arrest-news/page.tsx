@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface ArrestNews {
   id: number;
@@ -10,35 +11,54 @@ interface ArrestNews {
   title: string;
   author_name: string;
   is_published: boolean;
+  is_pinned: boolean;
 }
 
 export default function ManageArrestNewsPage() {
+  const supabase = createClientComponentClient();
   const [news, setNews] = useState<ArrestNews[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchNews = async () => {
     setIsLoading(true);
-    // RLS 정책에 의해 service_role만 접근 가능하므로 API 라우트를 사용합니다.
-    const response = await fetch('/api/admin/arrest-news');
-    if (!response.ok) {
+    const { data, error: fetchError } = await supabase
+      .from('arrest_news')
+      .select('*')
+      .order('is_pinned', { ascending: false })
+      .order('pinned_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+
+    if (fetchError) {
       setError('데이터를 불러오는 데 실패했습니다.');
-      setIsLoading(false);
-      return;
+    } else {
+      setNews(data as ArrestNews[]);
     }
-    const data = await response.json();
-    setNews(data);
     setIsLoading(false);
   };
 
   useEffect(() => {
     fetchNews();
-  }, []);
+  }, [supabase]);
+
+  const handlePinToggle = async (id: number, currentPinStatus: boolean) => {
+    try {
+      const response = await fetch(`/api/admin/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'arrest-news', id: id, pin: !currentPinStatus }),
+      });
+      if (!response.ok) throw new Error('상태 변경에 실패했습니다.');
+      await fetchNews();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '알 수 없는 오류');
+    }
+  };
 
   const handleDelete = async (id: number) => {
     if (window.confirm('정말로 이 게시글을 삭제하시겠습니까?')) {
       await fetch(`/api/admin/arrest-news/${id}`, { method: 'DELETE' });
-      await fetchNews(); // 목록 새로고침
+      await fetchNews();
     }
   };
 
@@ -66,8 +86,11 @@ export default function ManageArrestNewsPage() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {news.map(item => (
-            <tr key={item.id}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/arrest-news/${item.id}/edit`} className=" hover:text-indigo-900">{item.title}</Link></td>
+            <tr key={item.id} className={item.is_pinned ? 'bg-indigo-50' : ''}>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                {item.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
+                <Link href={`/admin/view/arrest-news/${item.id}`} className="hover:text-indigo-900">{item.title}</Link>
+              </td>
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.author_name}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {item.is_published
@@ -77,6 +100,9 @@ export default function ManageArrestNewsPage() {
               </td>
               <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.created_at).toLocaleDateString()}</td>
               <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                <button onClick={() => handlePinToggle(item.id, item.is_pinned)} className="text-blue-600 hover:text-blue-900">
+                  {item.is_pinned ? '고정 해제' : '상단 고정'}
+                </button>
                 <Link href={`/admin/arrest-news/${item.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
                 <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
               </td>

@@ -10,12 +10,12 @@ type IncidentPhoto = {
   title: string;
   description?: string;
   category?: string;
-  image_url?: string;
-  link_url?: string; // 추가된 부분
+  image_urls?: string[]; // image_url -> image_urls
+  link_url?: string;
   is_published: boolean;
 };
 
-type FormInputs = IncidentPhoto & {
+type FormInputs = Omit<IncidentPhoto, 'image_urls'> & {
   imageFile?: FileList;
 };
 
@@ -42,9 +42,12 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
     formData.append('description', data.description || '');
     formData.append('category', data.category || '');
     formData.append('is_published', String(data.is_published));
-    formData.append('link_url', data.link_url || ''); // 추가된 부분
+    formData.append('link_url', data.link_url || '');
+
     if (data.imageFile && data.imageFile.length > 0) {
-      formData.append('imageFile', data.imageFile[0]);
+      for (let i = 0; i < data.imageFile.length; i++) {
+        formData.append('imageFile', data.imageFile[i]);
+      }
     } else if (!isEditMode) {
       setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
       return;
@@ -63,9 +66,7 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
 
       setMessage({ type: 'success', text: `사진 자료가 성공적으로 ${isEditMode ? '수정' : '업로드'}되었습니다.` });
 
-      if (!isEditMode) {
-        reset();
-      }
+      if (!isEditMode) reset();
 
       router.refresh();
       if (isEditMode) {
@@ -100,20 +101,28 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
 
       <div>
         <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          이미지 파일 {isEditMode && '(변경할 경우에만 업로드)'}
+          이미지 파일 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'} <p className="text-red-600">* 이미지 첨부는 필수입니다.</p>
         </label>
         <input
           id="imageFile"
           type="file"
           accept="image/*"
-          {...register('imageFile', { required: !isEditMode })}
+          multiple // multiple 속성 추가
+          {...register('imageFile', {
+            required: !isEditMode,
+            validate: (files) => (files && files.length > 3) ? '최대 3개의 이미지만 업로드할 수 있습니다.' : true,
+          })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
-        {initialData?.image_url && (
-          <div className="mt-2">
-            <p className="text-sm text-gray-600">현재 이미지:</p>
-            <img src={initialData.image_url} alt={initialData.title} className="max-w-xs mt-1 rounded"/>
+        {initialData?.image_urls && initialData.image_urls.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
+            <div className="flex flex-wrap gap-4">
+              {initialData.image_urls.map((url, index) => (
+                <img key={index} src={url} alt={`${initialData.title} 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -134,6 +143,7 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
           id="category"
           {...register('category')}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+          placeholder="(예 : 카테고리를 적어주세요. 소식 공유, 검거 완료, ...)"
         />
       </div>
       <div>

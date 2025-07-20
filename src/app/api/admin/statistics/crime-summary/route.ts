@@ -19,9 +19,24 @@ export async function GET() {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_crime_summary_stats');
-    if (error) throw error;
-    return NextResponse.json(data);
+    const [
+      { data: crimeSummaryData, error: crimeSummaryError },
+      { count: helpQuestionsCount, error: helpQuestionsError }
+    ] = await Promise.all([
+      supabaseAdmin.rpc('get_crime_summary_stats'),
+      supabaseAdmin.from('help_questions').select('*', { count: 'exact', head: true })
+    ]);
+
+    if (crimeSummaryError) throw crimeSummaryError;
+    if (helpQuestionsError) throw helpQuestionsError;
+
+    // 최종 응답 객체에 두 데이터를 결합합니다.
+    const responseData = {
+      ...crimeSummaryData,
+      totalHelpQuestions: helpQuestionsCount ?? 0,
+    };
+
+    return NextResponse.json(responseData);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     return new NextResponse(errorMessage, { status: 500 });

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 interface CrimeSummary {
   totalReports: number;
+  totalHelpQuestions: number; // 총 예방 건수 필드 추가
   categoryCounts: Record<string, number>;
   monthlyTrends: Record<string, number>;
   damageDistribution: Record<string, number>;
@@ -61,6 +62,7 @@ export default function CrimeSummaryPage() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="총 신고 건수" value={summary.totalReports.toLocaleString()} />
+        <StatCard title="총 예방 건수 (헬프데스크)" value={summary.totalHelpQuestions.toLocaleString()} />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">

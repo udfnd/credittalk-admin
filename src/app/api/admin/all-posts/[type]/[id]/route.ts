@@ -17,12 +17,17 @@ async function isRequestFromAdmin(): Promise<boolean> {
 function getTableAndContentColumn(type: string): { tableName: string | null; contentColumn: string; titleColumn: string; userColumn: string | null } {
   const tableMap: { [key: string]: { tableName: string; contentColumn: string; titleColumn: string; userColumn: string | null } } = {
     community_posts: { tableName: 'community_posts', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' },
+    'community-posts': { tableName: 'community_posts', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' }, // alias for community_posts
     reviews: { tableName: 'reviews', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' },
     incident_photos: { tableName: 'incident_photos', contentColumn: 'description', titleColumn: 'title', userColumn: 'uploader_id' },
+    'incident-photos': { tableName: 'incident_photos', contentColumn: 'description', titleColumn: 'title', userColumn: 'uploader_id' }, // alias for incident_photos
     new_crime_cases: { tableName: 'new_crime_cases', contentColumn: 'method', titleColumn: 'method', userColumn: 'user_id' },
+    'new-crime-cases': { tableName: 'new_crime_cases', contentColumn: 'method', titleColumn: 'method', userColumn: 'user_id' }, // alias for new_crime_cases
     help_questions: { tableName: 'help_questions', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' },
+    'help-questions': { tableName: 'help_questions', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' }, // alias for help_questions
     notices: { tableName: 'notices', contentColumn: 'content', titleColumn: 'title', userColumn: null }, // user_id 대신 author_name 사용
     arrest_news: { tableName: 'arrest_news', contentColumn: 'content', titleColumn: 'title', userColumn: null }, // user_id 대신 author_name 사용
+    'arrest-news': { tableName: 'arrest_news', contentColumn: 'content', titleColumn: 'title', userColumn: null }, // alias for arrest_news
   };
   return tableMap[type] || { tableName: null, contentColumn: 'content', titleColumn: 'title', userColumn: null };
 }

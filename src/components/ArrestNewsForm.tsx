@@ -10,12 +10,12 @@ type ArrestNews = {
   title: string;
   content?: string;
   author_name?: string;
-  image_url?: string;
-  link_url?: string; // 추가된 부분
+  image_urls?: string[]; // image_url -> image_urls (배열)
+  link_url?: string;
   is_published: boolean;
 };
 
-type FormInputs = ArrestNews & {
+type FormInputs = Omit<ArrestNews, 'image_urls'> & { // image_urls 제외
   imageFile?: FileList;
 };
 
@@ -43,13 +43,18 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
     formData.append('content', data.content || '');
     formData.append('author_name', data.author_name || '관리자');
     formData.append('is_published', String(data.is_published));
-    formData.append('link_url', data.link_url || ''); // 추가된 부분
+    formData.append('link_url', data.link_url || '');
+
     if (data.imageFile && data.imageFile.length > 0) {
-      formData.append('imageFile', data.imageFile[0]);
+      // 여러 파일을 순회하며 추가
+      for (let i = 0; i < data.imageFile.length; i++) {
+        formData.append('imageFile', data.imageFile[i]);
+      }
     }
 
     const url = isEditMode ? `/api/admin/arrest-news/${initialData.id}` : '/api/admin/arrest-news';
-    const method = isEditMode ? 'POST' : 'POST';
+    // 수정 시에도 POST 메소드를 사용하도록 API 라우트가 설계되어 있음
+    const method = 'POST';
 
     try {
       const response = await fetch(url, { method, body: formData });
@@ -61,9 +66,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
 
       setMessage({ type: 'success', text: `성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
 
-      if (!isEditMode) {
-        reset();
-      }
+      if (!isEditMode) reset();
 
       router.refresh();
       if (isEditMode) {
@@ -106,25 +109,31 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
 
       <div>
         <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
+          대표 이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'}
         </label>
         <input
           id="imageFile"
           type="file"
           accept="image/*"
-          {...register('imageFile', { required: isEditMode ? false : '이미지는 필수입니다.' })}
+          multiple // multiple 속성 추가
+          {...register('imageFile', {
+            validate: (files) => (files && files.length > 3) ? '최대 3개의 이미지만 업로드할 수 있습니다.' : true,
+          })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
-        {initialData?.image_url && (
-          <div className="mt-2">
-            <p className="text-sm text-gray-600">현재 이미지:</p>
-            <img src={initialData.image_url} alt={initialData.title} className="max-w-xs mt-1 rounded"/>
+        {initialData?.image_urls && initialData.image_urls.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
+            <div className="flex flex-wrap gap-4">
+              {initialData.image_urls.map((url, index) => (
+                <img key={index} src={url} alt={`검거소식 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* 링크 URL 입력 필드 추가 */}
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
         <input

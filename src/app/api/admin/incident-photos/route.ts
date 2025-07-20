@@ -47,64 +47,38 @@ export async function GET() {
 
 
 export async function POST(request: Request) {
-  console.log("API Route: Received POST request.");
-
   if (!(await isAdmin())) {
-    console.warn("API Route: Unauthorized access attempt.");
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  console.log("API Route: Admin check passed.");
 
   try {
     const formData = await request.formData();
     const title = formData.get('title') as string;
-    const imageFile = formData.get('imageFile') as File;
-    const link_url = formData.get('link_url') as string | null; // 추가된 부분
+    const imageFiles = formData.getAll('imageFile') as File[]; // getAll로 변경
+    const link_url = formData.get('link_url') as string | null;
 
-    if (!title || !imageFile) {
-      console.error("API Route: Missing title or image file.");
-      return new NextResponse('Title and Image File are required', { status: 400 });
+    if (!title || imageFiles.length === 0 || imageFiles[0].size === 0) {
+      return new NextResponse('Title and at least one Image File are required', { status: 400 });
     }
 
-    console.log("API Route: Form data received. Original filename:", imageFile.name);
-
-    const originalName = imageFile.name;
-    const extension = originalName.includes('.') ? originalName.substring(originalName.lastIndexOf('.')) : '';
-    const safeExtension = extension.replace(/[^a-zA-Z0-9.]/g, '');
-    const fileName = `${uuidv4()}${safeExtension}`;
+    const imageUrls: string[] = []; // URL 배열
     const BUCKET_NAME = 'incident-photos';
 
-    console.log(`API Route: Generated key: "${fileName}". Uploading to "${BUCKET_NAME}" bucket.`);
-    const { data: uploadData, error: uploadError } = await supabaseAdmin
-      .storage
-      .from(BUCKET_NAME)
-      .upload(fileName, imageFile, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: imageFile.type
-      });
+    for (const imageFile of imageFiles) {
+      const originalName = imageFile.name;
+      const extension = originalName.includes('.') ? originalName.substring(originalName.lastIndexOf('.')) : '';
+      const safeExtension = extension.replace(/[^a-zA-Z0-9.]/g, '');
+      const fileName = `${uuidv4()}${safeExtension}`;
 
-    if (uploadError) {
-      console.error('API Route: Supabase Storage Upload Error:', uploadError);
-      if (uploadError.message.includes('Invalid key')) {
-        console.error("API Route: 'Invalid key' DETECTED! Key used:", fileName);
-      }
-      return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
+      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .upload(fileName, imageFile, { contentType: imageFile.type });
+
+      if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
+
+      const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
+      if (publicUrl) imageUrls.push(publicUrl);
     }
-
-    console.log("API Route: Upload successful. Path:", uploadData.path);
-
-    const { data: { publicUrl } } = supabaseAdmin
-      .storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(uploadData.path);
-
-    if (!publicUrl) {
-      console.error("API Route: Could not get public URL for path:", uploadData.path);
-      return new NextResponse('Could not get public URL', { status: 500 });
-    }
-
-    console.log("API Route: Public URL obtained:", publicUrl);
 
     const description = formData.get('description') as string;
     const category = formData.get('category') as string;
@@ -116,30 +90,25 @@ export async function POST(request: Request) {
         title,
         description: description || '',
         category: category || '',
-        image_url: publicUrl,
+        image_urls: imageUrls, // 배열 저장
         is_published,
         uploader_id: null,
-        link_url, // 추가된 부분
+        link_url,
       }])
       .select()
       .single();
 
     if (dbError) {
-      console.error('API Route: Supabase DB Insert Error:', dbError);
-      await supabaseAdmin.storage.from(BUCKET_NAME).remove([fileName]);
-      console.warn("API Route: Rolled back storage upload due to DB error.");
-      return new NextResponse(`Database Error: ${dbError.message}`, { status: 500 });
+      // DB 에러 시 업로드된 이미지 롤백
+      const imageNames = imageUrls.map(url => url.split('/').pop()).filter(Boolean);
+      if (imageNames.length > 0) await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
+      throw new Error(`Database Error: ${dbError.message}`);
     }
 
-    console.log("API Route: DB insert successful. ID:", dbData.id);
     return NextResponse.json(dbData);
 
   } catch (err) {
-    console.error('API Route: Uncaught Error:', err);
-    let errorMessage = 'An unknown internal error occurred';
-    if (err instanceof Error) {
-      errorMessage = err.message;
-    }
+    const errorMessage = err instanceof Error ? err.message : 'Unknown internal error';
     return new NextResponse(`Internal Server Error: ${errorMessage}`, { status: 500 });
   }
 }
