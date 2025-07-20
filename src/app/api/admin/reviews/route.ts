@@ -35,11 +35,13 @@ export async function POST(request: NextRequest) {
     }
 
     const imageUrls: string[] = [];
-    const BUCKET_NAME = 'review-images'; // Supabase 스토리지 버킷 이름
+    const BUCKET_NAME = 'reviews-images'; // Supabase 스토리지 버킷 이름
 
     for (const imageFile of imageFiles) {
       if (imageFile && imageFile.size > 0) {
-        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const fileExtension = imageFile.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
+
         const { data: uploadData, error: uploadError } = await supabaseAdmin
           .storage
           .from(BUCKET_NAME)

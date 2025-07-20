@@ -65,10 +65,8 @@ export async function POST(request: Request) {
     const BUCKET_NAME = 'incident-photos';
 
     for (const imageFile of imageFiles) {
-      const originalName = imageFile.name;
-      const extension = originalName.includes('.') ? originalName.substring(originalName.lastIndexOf('.')) : '';
-      const safeExtension = extension.replace(/[^a-zA-Z0-9.]/g, '');
-      const fileName = `${uuidv4()}${safeExtension}`;
+      const fileExtension = imageFile.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExtension}`;
 
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
         .from(BUCKET_NAME)

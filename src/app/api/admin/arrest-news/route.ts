@@ -63,7 +63,9 @@ export async function POST(request: NextRequest) {
     if (imageFiles.length > 0 && imageFiles[0].size > 0) {
       const BUCKET_NAME = 'arrest-news-images';
       for (const imageFile of imageFiles) {
-        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const fileExtension = imageFile.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
+
         const { data: uploadData, error: uploadError } = await supabaseAdmin
           .storage
           .from(BUCKET_NAME)

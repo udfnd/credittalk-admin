@@ -48,9 +48,9 @@ export async function GET(
 // [수정됨] 사진 정보 수정 API 전체를 image_urls 기준으로 수정합니다.
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -81,10 +81,9 @@ export async function POST(
 
       const newImageUrls: string[] = [];
       for (const imageFile of imageFiles) {
-        const originalName = imageFile.name;
-        const extension = originalName.includes('.') ? originalName.substring(originalName.lastIndexOf('.')) : '';
-        const safeExtension = extension.replace(/[^a-zA-Z0-9.]/g, '');
-        const fileName = `${uuidv4()}${safeExtension}`;
+        const fileExtension = imageFile.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
+
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
           .from(BUCKET_NAME)
           .upload(fileName, imageFile);

@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
 
     for (const imageFile of imageFiles) {
       if (imageFile && imageFile.size > 0) {
-        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const fileExtension = imageFile.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
 
         const { data: uploadData, error: uploadError } = await supabaseAdmin
           .storage

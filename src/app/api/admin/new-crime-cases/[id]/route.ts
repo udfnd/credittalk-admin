@@ -75,7 +75,9 @@ export async function POST(
 
       const newImageUrls: string[] = [];
       for (const imageFile of imageFiles) {
-        const fileName = `${uuidv4()}-${imageFile.name}`;
+        const fileExtension = imageFile.name.split('.').pop();
+        const fileName = `${uuidv4()}.${fileExtension}`;
+
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
           .from(BUCKET_NAME)
           .upload(fileName, imageFile);
