@@ -52,7 +52,7 @@ export async function PUT(
 
   try {
     const formData = await request.formData();
-    const updates: { [key: string]: any } = {
+    const updates: { [key: string] } = {
       title: formData.get('title') as string,
       content: formData.get('content') as string,
       rating: Number(formData.get('rating')),
