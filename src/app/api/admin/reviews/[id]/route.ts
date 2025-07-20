@@ -27,9 +27,9 @@ async function isRequestFromAdmin(): Promise<boolean> {
 // 단일 후기 조회
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -51,9 +51,9 @@ export async function GET(
 // 후기 수정 (PUT 메서드)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -113,9 +113,9 @@ export async function PUT(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });

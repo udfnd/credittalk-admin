@@ -68,8 +68,11 @@ export async function POST(
       const { data: currentCase } = await supabaseAdmin.from('new_crime_cases').select('image_urls').eq('id', id).single();
       if (currentCase?.image_urls && currentCase.image_urls.length > 0) {
         const oldImagePaths = currentCase.image_urls.map((url: string) => {
-          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch (e) { return null; }
+          try {
+            return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1];
+          } catch {
+            return null;
+          }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
@@ -148,7 +151,7 @@ export async function DELETE(
       const BUCKET_NAME = 'post-images';
       const imagePaths = crimeCase.image_urls.map((url: string) => {
         try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-        catch (e) { return null; }
+        catch { return null; }
       }).filter(Boolean);
 
       if (imagePaths.length > 0) {

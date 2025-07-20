@@ -49,7 +49,7 @@ export async function PUT(
 
   try {
     const formData = await request.formData();
-    const updates: { [key: string]: any } = {
+    const updates: { [key: string]: string | string[] | null } = {
       title: formData.get('title') as string,
       content: formData.get('content') as string,
       category: formData.get('category') as string,
@@ -64,7 +64,7 @@ export async function PUT(
       if (currentPost?.image_urls && currentPost.image_urls.length > 0) {
         const oldImagePaths = currentPost.image_urls.map((url: string) => {
           try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch (e) { return null; }
+          catch { return null; }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
@@ -99,7 +99,7 @@ export async function PUT(
 
     return NextResponse.json({ message: 'Update successful' });
 
-  } catch(err) {
+  } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     return new NextResponse(errorMessage, { status: 500 });
   }
@@ -109,9 +109,9 @@ export async function PUT(
 // [수정됨] 게시글 삭제 (DELETE) - 스토리지 이미지 삭제 로직 추가
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
