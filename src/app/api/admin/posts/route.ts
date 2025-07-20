@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     }
 
     const imageUrls: string[] = [];
-    const BUCKET_NAME = 'community-posts'; // Supabase 스토리지 버킷 이름
+    const BUCKET_NAME = 'post-images';
 
     for (const imageFile of imageFiles) {
       if (imageFile && imageFile.size > 0) {
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         const { data: uploadData, error: uploadError } = await supabaseAdmin
           .storage
           .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
+          .upload(`community-posts/${fileName}`, imageFile);
 
         if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
 

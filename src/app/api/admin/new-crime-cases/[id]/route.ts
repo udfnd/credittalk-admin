@@ -62,14 +62,18 @@ export async function POST(
     };
 
     const imageFiles = formData.getAll('imageFile') as File[];
-    const BUCKET_NAME = 'new-crime-cases-images';
+    const BUCKET_NAME = 'post-images';
 
     if (imageFiles.length > 0 && imageFiles[0].size > 0) {
       const { data: currentCase } = await supabaseAdmin.from('new_crime_cases').select('image_urls').eq('id', id).single();
       if (currentCase?.image_urls && currentCase.image_urls.length > 0) {
-        const oldImageNames = currentCase.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
-        if (oldImageNames.length > 0) {
-          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
+        const oldImagePaths = currentCase.image_urls.map((url: string) => {
+          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
+          catch (e) { return null; }
+        }).filter(Boolean);
+
+        if (oldImagePaths.length > 0) {
+          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
         }
       }
 
@@ -80,7 +84,7 @@ export async function POST(
 
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
           .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
+          .upload(`new-crime-cases/${fileName}`, imageFile);
 
         if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
 
@@ -141,10 +145,14 @@ export async function DELETE(
     }
 
     if (crimeCase?.image_urls && crimeCase.image_urls.length > 0) {
-      const BUCKET_NAME = 'new-crime-cases-images';
-      const imageNames = crimeCase.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
-      if (imageNames.length > 0) {
-        await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
+      const BUCKET_NAME = 'post-images';
+      const imagePaths = crimeCase.image_urls.map((url: string) => {
+        try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
+        catch (e) { return null; }
+      }).filter(Boolean);
+
+      if (imagePaths.length > 0) {
+        await supabaseAdmin.storage.from(BUCKET_NAME).remove(imagePaths as string[]);
       }
     }
 
