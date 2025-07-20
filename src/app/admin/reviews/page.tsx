@@ -12,7 +12,7 @@ interface Review {
   rating: number;
   author_name: string;
   is_published: boolean;
-  is_pinned: boolean; // 상단 고정 상태
+  is_pinned: boolean;
 }
 
 export default function ManageReviewsPage() {
@@ -25,7 +25,6 @@ export default function ManageReviewsPage() {
     setIsLoading(true);
     setError(null);
 
-    // [수정됨] 뷰에서 모든 컬럼을 직접 조회하고, 뷰의 컬럼을 기준으로 정렬합니다.
     const { data, error: fetchError } = await supabase
       .from('reviews_with_author_profile')
       .select('*')
@@ -51,15 +50,9 @@ export default function ManageReviewsPage() {
       const response = await fetch(`/api/admin/pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'reviews',
-          id: id,
-          pin: !currentPinStatus
-        }),
+        body: JSON.stringify({ type: 'reviews', id: id, pin: !currentPinStatus }),
       });
-      if (!response.ok) {
-        throw new Error('상태 변경에 실패했습니다.');
-      }
+      if (!response.ok) throw new Error('상태 변경에 실패했습니다.');
       await fetchReviews();
     } catch (err) {
       alert(err instanceof Error ? err.message : '알 수 없는 오류');
@@ -78,7 +71,12 @@ export default function ManageReviewsPage() {
 
   return (
     <div className="container mx-auto p-0 md:p-4">
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">후기 관리</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">후기 관리</h1>
+        <Link href="/admin/reviews/create" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+          새 후기 작성
+        </Link>
+      </div>
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">

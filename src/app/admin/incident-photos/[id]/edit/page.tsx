@@ -10,7 +10,7 @@ interface IncidentPhoto {
   title: string;
   description?: string;
   category?: string;
-  image_url?: string;
+  image_urls?: string[];
   is_published: boolean;
 }
 
@@ -23,17 +23,22 @@ export default function EditIncidentPhotoPage() {
 
   useEffect(() => {
     if (!id) return;
+    setLoading(true); // 로딩 상태를 여기서 설정
     fetch(`/api/admin/incident-photos/${id}`)
       .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch photo data');
+        if (!res.ok) {
+          // 서버에서 온 에러 메시지를 포함
+          return res.text().then(text => { throw new Error(text || 'Failed to fetch photo data') });
+        }
         return res.json();
       })
       .then(data => {
         setPhoto(data);
-        setLoading(false);
       })
       .catch(err => {
         setError(err.message);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, [id]);

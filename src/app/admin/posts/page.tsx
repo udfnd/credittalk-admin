@@ -23,18 +23,22 @@ export default function ManagePostsPage() {
 
   const fetchPosts = async () => {
     setIsLoading(true);
+    setError(null);
+
+    // [수정됨] 뷰에서 모든 컬럼을 직접 조회하고, 뷰에 포함된 컬럼을 기준으로 정렬합니다.
+    // referencedTable 옵션을 제거합니다.
     const { data, error: fetchError } = await supabase
       .from('community_posts_with_author_profile')
-      .select('*, community_posts(is_pinned, pinned_at)')
-      .order('is_pinned', { referencedTable: 'community_posts', ascending: false })
-      .order('pinned_at', { referencedTable: 'community_posts', ascending: false, nullsFirst: false })
+      .select('*')
+      .order('is_pinned', { ascending: false })
+      .order('pinned_at', { ascending: false, nullsFirst: true })
       .order('created_at', { ascending: false });
 
     if (fetchError) {
       console.error("Error fetching posts:", fetchError);
-      setError("게시글 목록을 불러오는 데 실패했습니다.");
+      setError("게시글 목록을 불러오는 데 실패했습니다: " + fetchError.message);
     } else {
-      setPosts(data);
+      setPosts(data as Post[]);
     }
     setIsLoading(false);
   };
@@ -69,7 +73,12 @@ export default function ManagePostsPage() {
 
   return (
     <div className="container mx-auto p-0 md:p-4">
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">커뮤니티 글 관리</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">커뮤니티 글 관리</h1>
+        <Link href="/admin/posts/create" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+          새 글 작성
+        </Link>
+      </div>
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
@@ -87,7 +96,7 @@ export default function ManagePostsPage() {
             <tr key={post.id} className={post.is_pinned ? 'bg-indigo-50' : ''}>
               <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 {post.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
-                <Link href={`/admin/view/community_posts/${post.id}`} className="hover:text-indigo-900">{post.title}</Link>
+                <Link href={`/admin/view/posts/${post.id}`} className="hover:text-indigo-900">{post.title}</Link>
               </td>
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.author_name}</td>
               <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.category}</td>

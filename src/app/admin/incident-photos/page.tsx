@@ -10,10 +10,10 @@ interface IncidentPhoto {
   created_at: string;
   title: string;
   category: string | null;
-  image_urls: string[]; // image_url에서 image_urls 배열로 수정
+  image_urls: string[];
   is_published: boolean;
   is_pinned: boolean;
-  author_name: string; // 작성자 이름 필드 추가
+  author_name: string;
 }
 
 export default function ManageIncidentPhotosPage() {
@@ -24,7 +24,6 @@ export default function ManageIncidentPhotosPage() {
 
   const fetchPhotos = async () => {
     setIsLoading(true);
-    // [수정됨] 새로 만든 뷰에서 데이터를 가져옵니다.
     const { data, error: fetchError } = await supabase
       .from('incident_photos_with_author_profile')
       .select('*')
@@ -83,7 +82,7 @@ export default function ManageIncidentPhotosPage() {
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이미지</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th> {/* 작성자 헤더 추가 */}
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">카테고리</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
@@ -104,7 +103,6 @@ export default function ManageIncidentPhotosPage() {
                 {item.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
                 <Link href={`/admin/view/incident-photos/${item.id}`} className="hover:text-indigo-900">{item.title}</Link>
               </td>
-              {/* 작성자 셀 추가 */}
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.author_name || 'N/A'}</td>
               <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category || 'N/A'}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
