@@ -142,7 +142,7 @@ export async function DELETE(
       const BUCKET_NAME = 'post-images';
       const imagePaths = post.image_urls.map((url: string) => {
         try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-        catch (e) { return null; }
+        catch { return null; }
       }).filter(Boolean);
 
       if (imagePaths.length > 0) {
