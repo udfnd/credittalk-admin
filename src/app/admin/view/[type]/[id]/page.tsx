@@ -1,7 +1,7 @@
 // src/app/admin/all-posts/[type]/[id]/page.tsx
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, Fragment } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
