@@ -1,9 +1,8 @@
 // src/app/admin/all-posts/[type]/[id]/page.tsx
 'use client';
 
-import {useEffect, useState, useMemo, Fragment, useCallback} from 'react';
+import {useEffect, useState, useMemo, useCallback} from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 // [수정됨] 댓글 타입 확장
 interface Comment {
