@@ -5,6 +5,7 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+// 폼 데이터 타입을 정의합니다.
 type PostInputs = {
   title: string;
   content: string;
@@ -12,10 +13,25 @@ type PostInputs = {
   imageFile?: FileList;
 };
 
-export default function PostForm() {
+// 수정 시 초기 데이터를 받기 위한 타입
+interface PostData extends PostInputs {
+  id?: number;
+  image_urls?: string[];
+}
+
+// 컴포넌트 Props 타입 정의
+interface PostFormProps {
+  initialData?: PostData;
+}
+
+export default function PostForm({ initialData }: PostFormProps) {
   const router = useRouter();
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<PostInputs>();
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<PostInputs>({
+    defaultValues: initialData || {},
+  });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const isEditMode = !!initialData;
 
   const onSubmit: SubmitHandler<PostInputs> = async (data) => {
     setMessage(null);
@@ -30,10 +46,14 @@ export default function PostForm() {
       }
     }
 
+    // 수정 모드와 생성 모드에 따라 URL과 HTTP 메서드를 동적으로 결정합니다.
+    const url = isEditMode ? `/api/admin/posts/${initialData?.id}` : '/api/admin/posts';
+    const method = isEditMode ? 'PUT' : 'POST';
+
     try {
-      const response = await fetch('/api/admin/posts', {
-        method: 'POST',
-        body: formData, // JSON이 아닌 FormData를 전송
+      const response = await fetch(url, {
+        method: method,
+        body: formData,
       });
 
       if (!response.ok) {
@@ -41,8 +61,10 @@ export default function PostForm() {
         throw new Error(errorText || 'An error occurred');
       }
 
-      setMessage({ type: 'success', text: '게시글이 성공적으로 생성되었습니다.' });
-      reset();
+      setMessage({ type: 'success', text: `게시글이 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
+
+      if (!isEditMode) reset();
+
       router.refresh();
       setTimeout(() => router.push('/admin/posts'), 1500);
 
@@ -75,6 +97,7 @@ export default function PostForm() {
           id="category"
           {...register('category', { required: '카테고리는 필수입니다.' })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+          placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"
         />
         {errors.category && <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>}
       </div>
@@ -91,7 +114,7 @@ export default function PostForm() {
 
       <div>
         <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          이미지 (최대 3장, 선택 사항)
+          이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'} <p className="text-red-600">* 이미지 첨부는 필수입니다.</p>
         </label>
         <input
           id="imageFile"
@@ -104,6 +127,16 @@ export default function PostForm() {
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
+        {initialData?.image_urls && initialData.image_urls.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
+            <div className="flex flex-wrap gap-4">
+              {initialData.image_urls.map((url, index) => (
+                <img key={index} src={url} alt={`커뮤니티 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <button
@@ -111,7 +144,7 @@ export default function PostForm() {
         disabled={isSubmitting}
         className="px-4 py-2 font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
       >
-        {isSubmitting ? '생성 중...' : '생성하기'}
+        {isSubmitting ? (isEditMode ? '수정 중...' : '생성 중...') : (isEditMode ? '수정하기' : '생성하기')}
       </button>
     </form>
   );

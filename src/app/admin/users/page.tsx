@@ -103,6 +103,8 @@ export default function ManageUsersPage() {
           <table className="min-w-full divide-y divide-gray-200 responsive-table">
             <thead className="bg-gray-50">
             <tr>
+              {/* [수정됨] 번호 헤더 추가 */}
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">번호</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">직업군</th>
@@ -112,8 +114,11 @@ export default function ManageUsersPage() {
             </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
-            {users.map(user => (
+            {/* [수정됨] map 함수에 index 파라미터를 추가하여 사용합니다. */}
+            {users.map((user, index) => (
               <tr key={user.id}>
+                {/* [수정됨] 번호 셀 추가 (index는 0부터 시작하므로 +1) */}
+                <td data-label="번호" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                 <td data-label="이름" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   <Link href={`/admin/users/${user.auth_user_id}/activity`} className="text-indigo-600 hover:text-indigo-900 hover:underline">
                     {user.name}

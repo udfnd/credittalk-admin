@@ -104,7 +104,7 @@ export default function ManageHelpDeskPage() {
 
   return (
     <div className="container mx-auto p-0 md:p-4">
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">고객 문의 관리</h1>
+      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">헬프 상담게시판 관리</h1>
       <div className="bg-white shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
@@ -120,7 +120,7 @@ export default function ManageHelpDeskPage() {
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {questions.map(q => (
             <tr key={q.id}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{q.title}</td>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/help-desk/${q.id}`} className="hover:text-indigo-600">{q.title}</Link></td>
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{q.author_name || 'N/A'}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {q.is_answered

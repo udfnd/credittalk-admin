@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 type Notice = {
   id?: number;
   title: string;
+  category?: string;
   content: string;
   author_name?: string;
   image_urls?: string[];
@@ -106,7 +107,15 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         />
         {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
       </div>
-
+      <div>
+        <label htmlFor="category" className="block text-sm font-medium text-gray-700">카테고리</label>
+        <input
+          id="category"
+          {...register('category')}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+          placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"
+        />
+      </div>
       <div>
         <label htmlFor="content" className="block text-sm font-medium text-gray-700">내용</label>
         <textarea
@@ -120,7 +129,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
 
       <div>
         <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          대표 이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'}
+          대표 이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'} <p className="text-red-600">* 이미지 첨부는 필수입니다.</p>
         </label>
         <input
           id="imageFile"

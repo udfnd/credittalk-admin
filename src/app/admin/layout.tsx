@@ -43,7 +43,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         } transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex-shrink-0 flex flex-col`}
       >
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold">크레디톡 어드민</h1>
+          <h1 className="text-2xl font-bold">크레딧톡 어드민</h1>
           <button
             onClick={() => setIsSidebarOpen(false)}
             className="md:hidden text-white"
@@ -87,7 +87,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             <Bars3Icon className="w-6 h-6" />
           </button>
-          <span className="text-xl font-semibold text-gray-800">크레디톡</span>
+          <span className="text-xl font-semibold text-gray-800">크레딧톡</span>
         </header>
 
         <main className="flex-1 p-6 md:p-10 overflow-y-auto">

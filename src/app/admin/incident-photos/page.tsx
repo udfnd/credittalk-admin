@@ -1,9 +1,10 @@
 // src/app/admin/incident-photos/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react'; // Fragment 추가
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import CommentForm from '@/components/CommentForm'; // CommentForm 임포트
 
 interface IncidentPhoto {
   id: number;
@@ -21,6 +22,7 @@ export default function ManageIncidentPhotosPage() {
   const [photos, setPhotos] = useState<IncidentPhoto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCommentFormId, setOpenCommentFormId] = useState<number | null>(null); // 댓글 폼 상태 추가
 
   const fetchPhotos = async () => {
     setIsLoading(true);
@@ -91,35 +93,56 @@ export default function ManageIncidentPhotosPage() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {photos.map(item => (
-            <tr key={item.id} className={item.is_pinned ? 'bg-indigo-50' : ''}>
-              <td data-label="이미지" className="px-6 py-4">
-                {item.image_urls && item.image_urls.length > 0 ? (
-                  <img src={item.image_urls[0]} alt={item.title} className="w-24 h-16 object-cover rounded" />
-                ) : (
-                  <div className="w-24 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">No Image</div>
-                )}
-              </td>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                {item.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
-                <Link href={`/admin/view/incident-photos/${item.id}`} className="hover:text-indigo-900">{item.title}</Link>
-              </td>
-              <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.author_name || 'N/A'}</td>
-              <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category || 'N/A'}</td>
-              <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
-                {item.is_published
-                  ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">게시됨</span>
-                  : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">숨김</span>
-                }
-              </td>
-              <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.created_at).toLocaleDateString()}</td>
-              <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
-                <button onClick={() => handlePinToggle(item.id, item.is_pinned)} className="text-blue-600 hover:text-blue-900">
-                  {item.is_pinned ? '고정 해제' : '상단 고정'}
-                </button>
-                <Link href={`/admin/incident-photos/${item.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
-                <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
-              </td>
-            </tr>
+            <Fragment key={item.id}>
+              <tr className={item.is_pinned ? 'bg-indigo-50' : ''}>
+                <td data-label="이미지" className="px-6 py-4">
+                  {item.image_urls && item.image_urls.length > 0 ? (
+                    <img src={item.image_urls[0]} alt={item.title} className="w-24 h-16 object-cover rounded" />
+                  ) : (
+                    <div className="w-24 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">No Image</div>
+                  )}
+                </td>
+                <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  {item.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
+                  <Link href={`/admin/view/incident-photos/${item.id}`} className="hover:text-indigo-900">{item.title}</Link>
+                </td>
+                <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.author_name || 'N/A'}</td>
+                <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category || 'N/A'}</td>
+                <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
+                  {item.is_published
+                    ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">게시됨</span>
+                    : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">숨김</span>
+                  }
+                </td>
+                <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.created_at).toLocaleDateString()}</td>
+                <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                  {/* [수정됨] 답글 달기 버튼 추가 */}
+                  <button onClick={() => setOpenCommentFormId(openCommentFormId === item.id ? null : item.id)} className="text-green-600 hover:text-green-900">
+                    답글 달기
+                  </button>
+                  <button onClick={() => handlePinToggle(item.id, item.is_pinned)} className="text-blue-600 hover:text-blue-900">
+                    {item.is_pinned ? '고정 해제' : '상단 고정'}
+                  </button>
+                  <Link href={`/admin/incident-photos/${item.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
+                  <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                </td>
+              </tr>
+              {/* [수정됨] 댓글 폼 렌더링 로직 추가 */}
+              {openCommentFormId === item.id && (
+                <tr>
+                  <td colSpan={7}> {/* 테이블 컬럼 수에 맞게 colSpan 조정 */}
+                    <CommentForm
+                      postId={item.id}
+                      boardType="incident_photos"
+                      onCommentSubmit={() => {
+                        alert('댓글이 성공적으로 등록되었습니다.');
+                        setOpenCommentFormId(null);
+                      }}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
           </tbody>
         </table>

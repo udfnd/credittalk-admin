@@ -4,7 +4,16 @@ import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
 
-// 관리자 여부 확인
+// [신규] URL 경로(type)를 실제 DB 테이블 이름으로 매핑하는 객체
+const TABLE_MAP: { [key: string]: string } = {
+  'notices': 'notices',
+  'arrest-news': 'arrest_news',
+  'reviews': 'reviews',
+  'incident-photos': 'incident_photos',
+  'new-crime-cases': 'new_crime_cases',
+  'posts': 'community_posts',
+};
+
 async function isRequestFromAdmin(supabase: ReturnType<typeof createClient>): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
@@ -12,7 +21,6 @@ async function isRequestFromAdmin(supabase: ReturnType<typeof createClient>): Pr
   return isAdmin === true;
 }
 
-// 현재 로그인한 관리자의 public.users.id (bigint)를 가져오는 함수
 async function getAdminProfileId(supabase: ReturnType<typeof createClient>): Promise<number | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -40,10 +48,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { postId, boardType, content } = await request.json();
+    const { postId, boardType, content, parent_comment_id } = await request.json();
 
-    if (!postId || !boardType || !content) {
-      return new NextResponse('Missing required fields: postId, boardType, content', { status: 400 });
+    // [수정됨] 매핑을 통해 올바른 테이블 이름을 가져옵니다.
+    const tableName = TABLE_MAP[boardType];
+
+    if (!tableName || !postId || !content) {
+      return new NextResponse('Missing or invalid required fields: postId, boardType, content', { status: 400 });
     }
 
     const adminUserId = await getAdminProfileId(supabase);
@@ -53,9 +64,10 @@ export async function POST(request: NextRequest) {
 
     const { error } = await supabaseAdmin.from('comments').insert({
       post_id: postId,
-      board_type: boardType,
+      board_type: tableName, // [수정됨] 변환된 테이블 이름을 사용합니다.
       content: content,
-      user_id: adminUserId, // public.users.id (bigint)
+      user_id: adminUserId,
+      parent_comment_id: parent_comment_id,
     });
 
     if (error) {

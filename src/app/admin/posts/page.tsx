@@ -1,9 +1,10 @@
 // src/app/admin/posts/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react'; // Fragment 추가
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import CommentForm from '@/components/CommentForm'; // CommentForm 임포트
 
 interface Post {
   id: number;
@@ -20,13 +21,12 @@ export default function ManagePostsPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openCommentFormId, setOpenCommentFormId] = useState<number | null>(null); // 댓글 폼 상태 추가
 
   const fetchPosts = async () => {
     setIsLoading(true);
     setError(null);
 
-    // [수정됨] 뷰에서 모든 컬럼을 직접 조회하고, 뷰에 포함된 컬럼을 기준으로 정렬합니다.
-    // referencedTable 옵션을 제거합니다.
     const { data, error: fetchError } = await supabase
       .from('community_posts_with_author_profile')
       .select('*')
@@ -93,23 +93,42 @@ export default function ManagePostsPage() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {posts.map(post => (
-            <tr key={post.id} className={post.is_pinned ? 'bg-indigo-50' : ''}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                {post.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
-                <Link href={`/admin/view/posts/${post.id}`} className="hover:text-indigo-900">{post.title}</Link>
-              </td>
-              <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.author_name}</td>
-              <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.category}</td>
-              <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.views}</td>
-              <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(post.created_at).toLocaleDateString()}</td>
-              <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
-                <button onClick={() => handlePinToggle(post.id, post.is_pinned)} className="text-blue-600 hover:text-blue-900">
-                  {post.is_pinned ? '고정 해제' : '상단 고정'}
-                </button>
-                <Link href={`/admin/posts/${post.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
-                <button onClick={() => handleDelete(post.id)} className="text-red-600 hover:text-red-900">삭제</button>
-              </td>
-            </tr>
+            <Fragment key={post.id}>
+              <tr className={post.is_pinned ? 'bg-indigo-50' : ''}>
+                <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  {post.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
+                  <Link href={`/admin/view/posts/${post.id}`} className="hover:text-indigo-900">{post.title}</Link>
+                </td>
+                <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.author_name}</td>
+                <td data-label="카테고리" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.category}</td>
+                <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{post.views}</td>
+                <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(post.created_at).toLocaleDateString()}</td>
+                <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                  <button onClick={() => setOpenCommentFormId(openCommentFormId === post.id ? null : post.id)} className="text-green-600 hover:text-green-900">
+                    답글 달기
+                  </button>
+                  <button onClick={() => handlePinToggle(post.id, post.is_pinned)} className="text-blue-600 hover:text-blue-900">
+                    {post.is_pinned ? '고정 해제' : '상단 고정'}
+                  </button>
+                  <Link href={`/admin/posts/${post.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
+                  <button onClick={() => handleDelete(post.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                </td>
+              </tr>
+              {openCommentFormId === post.id && (
+                <tr>
+                  <td colSpan={6}>
+                    <CommentForm
+                      postId={post.id}
+                      boardType="community_posts"
+                      onCommentSubmit={() => {
+                        alert('댓글이 성공적으로 등록되었습니다.');
+                        setOpenCommentFormId(null);
+                      }}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
           </tbody>
         </table>

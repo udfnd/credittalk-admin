@@ -143,7 +143,7 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
           id="category"
           {...register('category')}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
-          placeholder="(예 : 카테고리를 적어주세요. 소식 공유, 검거 완료, ...)"
+          placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"
         />
       </div>
       <div>

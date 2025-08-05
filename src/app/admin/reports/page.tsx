@@ -11,6 +11,7 @@ interface ReportSummary {
   created_at: string;
   category: string;
   description: string | null;
+  attempted_fraud: boolean;
   nickname: string | null;
   analysis_result: string | null;
   phone_numbers: string[] | null;
@@ -95,32 +96,34 @@ export default function ReportListPage() {
             </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-            {reports.map(report => (
-              <tr key={report.id}>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(report.created_at).toLocaleDateString()}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{report.nickname || 'N/A'}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.category}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderArray(report.phone_numbers)}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderAccounts(report.damage_accounts)}</td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm">
-                  {report.analysis_result ? (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                      {report.analysis_result}
-                    </span>
-                  ) : (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                      미분석
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                  <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
-                    분석/수정
-                  </Link>
-                </td>
-              </tr>
-            ))}
+            {reports
+              .filter(report => !report.attempted_fraud)
+              .map(report => (
+                <tr key={report.id}>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(report.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{report.nickname || 'N/A'}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.category}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderArray(report.phone_numbers)}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderAccounts(report.damage_accounts)}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm">
+                    {report.analysis_result ? (
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        {report.analysis_result}
+                      </span>
+                    ) : (
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                        미분석
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                    <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
+                      분석/수정
+                    </Link>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
