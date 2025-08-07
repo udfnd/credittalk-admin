@@ -38,7 +38,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         author_name: '관리자',
       };
     }
-    const { image_urls, ...formDefaults } = initialData;
+    const { ...formDefaults } = initialData;
     return formDefaults;
   };
 

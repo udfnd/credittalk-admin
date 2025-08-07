@@ -34,7 +34,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
         is_published: true,
       };
     }
-    const { image_urls, ...formDefaults } = initialData;
+    const { ...formDefaults } = initialData;
     return formDefaults;
   };
 
