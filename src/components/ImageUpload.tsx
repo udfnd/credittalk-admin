@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form';
+import { UseFormRegister, UseFormSetValue, UseFormWatch, FieldValues, Path, PathValue } from 'react-hook-form';
 import Image from 'next/image';
 
 // + 아이콘 SVG
@@ -19,20 +19,15 @@ const XCircleIcon = () => (
   </svg>
 );
 
-type ImageUploadFormInputs = {
-  imageFile_0?: FileList;
-  imageFile_1?: FileList;
-  imageFile_2?: FileList;
-};
-
-interface ImageUploadProps {
-  register: UseFormRegister<ImageUploadFormInputs>;
-  setValue: UseFormSetValue<ImageUploadFormInputs>;
-  watch: UseFormWatch<ImageUploadFormInputs>;
+// 제네릭 T를 사용하여 어떤 폼에서든 재사용 가능하도록 타입을 정의합니다.
+interface ImageUploadProps<T extends FieldValues> {
+  register: UseFormRegister<T>;
+  setValue: UseFormSetValue<T>;
+  watch: UseFormWatch<T>;
   initialImageUrls?: string[];
 }
 
-export default function ImageUpload({ register, setValue, watch, initialImageUrls = [] }: ImageUploadProps) {
+export default function ImageUpload<T extends FieldValues>({ register, setValue, watch, initialImageUrls = [] }: ImageUploadProps<T>) {
   const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
 
   useEffect(() => {
@@ -41,13 +36,15 @@ export default function ImageUpload({ register, setValue, watch, initialImageUrl
       initialPreviews[index] = url;
     });
     setPreviews(initialPreviews);
+  }, [initialImageUrls]);
 
+  useEffect(() => {
     const subscription = watch((value, { name }) => {
       if (name && (name === 'imageFile_0' || name === 'imageFile_1' || name === 'imageFile_2')) {
         const index = parseInt(name.split('_')[1], 10);
         if (isNaN(index)) return;
 
-        const fileList = value[name];
+        const fileList = value[name] as FileList | undefined;
         setPreviews(currentPreviews => {
           const newPreviews = [...currentPreviews];
           const oldPreview = newPreviews[index];
@@ -87,9 +84,11 @@ export default function ImageUpload({ register, setValue, watch, initialImageUrl
       newPreviews[index] = null;
       return newPreviews;
     });
-    // [수정됨] 타입 단언을 사용하여 TypeScript에 키가 유효함을 알려줍니다.
-    const fieldName = `imageFile_${index}` as keyof ImageUploadFormInputs;
-    setValue(fieldName, undefined, { shouldValidate: true });
+
+    // [수정됨] 타입 단언을 통해 TypeScript에 `fieldName`이 T의 유효한 키임을 알려줍니다.
+    const fieldName = `imageFile_${index}` as Path<T>;
+    // [수정됨] `undefined`를 PathValue 타입으로 단언하여 타입 불일치 문제를 해결합니다.
+    setValue(fieldName, undefined as PathValue<T, Path<T>>, { shouldValidate: true });
   };
 
   return (
@@ -115,8 +114,8 @@ export default function ImageUpload({ register, setValue, watch, initialImageUrl
                   id={`imageFile_${index}`}
                   type="file"
                   accept="image/*"
-                  // [수정됨] 타입 단언을 사용하여 TypeScript에 키가 유효함을 알려줍니다.
-                  {...register(`imageFile_${index}` as keyof ImageUploadFormInputs)}
+                  // [수정됨] 타입 단언을 사용하여 TypeScript에 `fieldName`이 T의 유효한 키임을 알려줍니다.
+                  {...register(`imageFile_${index}` as Path<T>)}
                   className="hidden"
                 />
               </label>
