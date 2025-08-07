@@ -4,18 +4,24 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
 
-// 폼 데이터 타입을 정의합니다.
+// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
 type PostInputs = {
   title: string;
   content: string;
   category: string;
-  imageFile?: FileList;
+  imageFile_0?: FileList;
+  imageFile_1?: FileList;
+  imageFile_2?: FileList;
 };
 
 // 수정 시 초기 데이터를 받기 위한 타입
-interface PostData extends PostInputs {
+interface PostData {
   id?: number;
+  title: string;
+  content: string;
+  category: string;
   image_urls?: string[];
 }
 
@@ -26,7 +32,8 @@ interface PostFormProps {
 
 export default function PostForm({ initialData }: PostFormProps) {
   const router = useRouter();
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<PostInputs>({
+  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<PostInputs>({
     defaultValues: initialData || {},
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -40,13 +47,14 @@ export default function PostForm({ initialData }: PostFormProps) {
     formData.append('content', data.content);
     formData.append('category', data.category);
 
-    if (data.imageFile && data.imageFile.length > 0) {
-      for (let i = 0; i < data.imageFile.length; i++) {
-        formData.append('imageFile', data.imageFile[i]);
+    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
+    for (let i = 0; i < 3; i++) {
+      const fileList = data[`imageFile_${i}` as keyof PostInputs] as FileList | undefined;
+      if (fileList && fileList.length > 0) {
+        formData.append('imageFile', fileList[0]);
       }
     }
 
-    // 수정 모드와 생성 모드에 따라 URL과 HTTP 메서드를 동적으로 결정합니다.
     const url = isEditMode ? `/api/admin/posts/${initialData?.id}` : '/api/admin/posts';
     const method = isEditMode ? 'PUT' : 'POST';
 
@@ -112,31 +120,17 @@ export default function PostForm({ initialData }: PostFormProps) {
         />
       </div>
 
+      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
-        <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'} <p className="text-red-600">* 이미지 첨부는 필수입니다.</p>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          이미지 (최대 3장, 선택 사항)
         </label>
-        <input
-          id="imageFile"
-          type="file"
-          accept="image/*"
-          multiple
-          {...register('imageFile', {
-            validate: (files) => (files && files.length > 3) ? '최대 3개의 이미지만 업로드할 수 있습니다.' : true,
-          })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+        <ImageUpload
+          register={register}
+          watch={watch}
+          setValue={setValue}
+          initialImageUrls={initialData?.image_urls || []}
         />
-        {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
-        {initialData?.image_urls && initialData.image_urls.length > 0 && (
-          <div className="mt-4">
-            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
-            <div className="flex flex-wrap gap-4">
-              {initialData.image_urls.map((url, index) => (
-                <img key={index} src={url} alt={`커뮤니티 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <button

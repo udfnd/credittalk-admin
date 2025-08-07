@@ -4,6 +4,7 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
 
 // initialData를 위한 타입 정의 추가
 interface ReviewData {
@@ -15,12 +16,15 @@ interface ReviewData {
   image_urls?: string[];
 }
 
+// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
 type ReviewInputs = {
   title: string;
   content: string;
   rating: number;
   is_published: boolean;
-  imageFile?: FileList; // 이미지 파일 필드 추가
+  imageFile_0?: FileList;
+  imageFile_1?: FileList;
+  imageFile_2?: FileList;
 };
 
 interface ReviewFormProps {
@@ -29,7 +33,8 @@ interface ReviewFormProps {
 
 export default function ReviewForm({ initialData }: ReviewFormProps) {
   const router = useRouter();
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ReviewInputs>({
+  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ReviewInputs>({
     defaultValues: initialData || {
       is_published: true,
       rating: 5,
@@ -47,9 +52,11 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
     formData.append('rating', String(data.rating));
     formData.append('is_published', String(data.is_published));
 
-    if (data.imageFile && data.imageFile.length > 0) {
-      for (let i = 0; i < data.imageFile.length; i++) {
-        formData.append('imageFile', data.imageFile[i]);
+    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
+    for (let i = 0; i < 3; i++) {
+      const fileList = data[`imageFile_${i}` as keyof ReviewInputs] as FileList | undefined;
+      if (fileList && fileList.length > 0) {
+        formData.append('imageFile', fileList[0]);
       }
     }
 
@@ -59,7 +66,7 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
     try {
       const response = await fetch(url, {
         method: method,
-        body: formData, // JSON이 아닌 FormData 전송
+        body: formData,
       });
 
       if (!response.ok) {
@@ -109,32 +116,17 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
         {errors.content && <p className="mt-1 text-sm text-red-600">{errors.content.message}</p>}
       </div>
 
-      {/* 이미지 업로드 필드 추가 */}
+      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
-        <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
           이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'}
         </label>
-        <input
-          id="imageFile"
-          type="file"
-          accept="image/*"
-          multiple
-          {...register('imageFile', {
-            validate: (files) => (files && files.length > 3) ? '최대 3개의 이미지만 업로드할 수 있습니다.' : true,
-          })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+        <ImageUpload
+          register={register}
+          watch={watch}
+          setValue={setValue}
+          initialImageUrls={initialData?.image_urls || []}
         />
-        {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
-        {initialData?.image_urls && initialData.image_urls.length > 0 && (
-          <div className="mt-4">
-            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
-            <div className="flex flex-wrap gap-4">
-              {initialData.image_urls.map((url, index) => (
-                <img key={index} src={url} alt={`후기 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div>

@@ -4,6 +4,7 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
 
 type ArrestNews = {
   id?: number;
@@ -16,8 +17,11 @@ type ArrestNews = {
   is_published: boolean;
 };
 
-type FormInputs = Omit<ArrestNews, 'image_urls'> & { // image_urls 제외
-  imageFile?: FileList;
+// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
+type FormInputs = Omit<ArrestNews, 'image_urls'> & {
+  imageFile_0?: FileList;
+  imageFile_1?: FileList;
+  imageFile_2?: FileList;
 };
 
 interface ArrestNewsFormProps {
@@ -26,7 +30,8 @@ interface ArrestNewsFormProps {
 
 export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
   const router = useRouter();
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormInputs>({
+  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
     defaultValues: initialData || {
       is_published: true,
       author_name: '관리자',
@@ -45,16 +50,17 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
     formData.append('author_name', data.author_name || '관리자');
     formData.append('is_published', String(data.is_published));
     formData.append('link_url', data.link_url || '');
+    formData.append('category', data.category || '');
 
-    if (data.imageFile && data.imageFile.length > 0) {
-      // 여러 파일을 순회하며 추가
-      for (let i = 0; i < data.imageFile.length; i++) {
-        formData.append('imageFile', data.imageFile[i]);
+    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
+    for (let i = 0; i < 3; i++) {
+      const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
+      if (fileList && fileList.length > 0) {
+        formData.append('imageFile', fileList[0]);
       }
     }
 
-    const url = isEditMode ? `/api/admin/arrest-news/${initialData.id}` : '/api/admin/arrest-news';
-    // 수정 시에도 POST 메소드를 사용하도록 API 라우트가 설계되어 있음
+    const url = isEditMode ? `/api/admin/arrest-news/${initialData?.id}` : '/api/admin/arrest-news';
     const method = 'POST';
 
     try {
@@ -116,32 +122,29 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         />
       </div>
 
+      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
-        <label htmlFor="imageFile" className="block text-sm font-medium text-gray-700">
-          대표 이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'} <p className="text-red-600">* 이미지 첨부는 필수입니다.</p>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
+          <p className="text-red-600 inline-block ml-2">* 이미지 첨부는 필수입니다.</p>
         </label>
-        <input
-          id="imageFile"
-          type="file"
-          accept="image/*"
-          multiple // multiple 속성 추가
-          {...register('imageFile', {
-            validate: (files) => (files && files.length > 3) ? '최대 3개의 이미지만 업로드할 수 있습니다.' : true,
-          })}
-          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+        <ImageUpload
+          register={register}
+          watch={watch}
+          setValue={setValue}
+          initialImageUrls={initialData?.image_urls || []}
         />
-        {errors.imageFile && <p className="mt-1 text-sm text-red-600">{errors.imageFile.message}</p>}
-        {initialData?.image_urls && initialData.image_urls.length > 0 && (
-          <div className="mt-4">
-            <p className="text-sm text-gray-600 mb-2">현재 이미지:</p>
-            <div className="flex flex-wrap gap-4">
-              {initialData.image_urls.map((url, index) => (
-                <img key={index} src={url} alt={`검거소식 이미지 ${index + 1}`} className="w-32 h-32 object-cover rounded"/>
-              ))}
-            </div>
-          </div>
-        )}
+        {/*
+          <input
+            {...register('imageFile', { required: !isEditMode })}
+            ...
+          />
+          와 같은 필드 레벨의 에러 메시지는 ImageUpload 컴포넌트 내에서 처리하거나,
+          상위 폼에서 여러 파일 필드를 종합하여 유효성을 검사할 수 있습니다.
+          여기서는 단순화를 위해 생략합니다.
+        */}
       </div>
+
 
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
