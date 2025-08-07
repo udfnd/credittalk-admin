@@ -126,7 +126,6 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
-          <p className="text-red-600 inline-block ml-2">* 이미지 첨부는 필수입니다.</p>
         </label>
         <ImageUpload
           register={register}
