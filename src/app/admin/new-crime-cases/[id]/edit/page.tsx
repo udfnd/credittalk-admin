@@ -7,6 +7,7 @@ import NewCrimeCaseForm from '@/components/NewCrimeCaseForm';
 
 interface NewCrimeCase {
   id: number;
+  title: string;
   method: string;
   image_urls?: string[];
   is_published: boolean;
