@@ -128,7 +128,6 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
           initialImageUrls={initialData?.image_urls || []}
         />
       </div>
-
       <div>
         <label htmlFor="rating" className="block text-sm font-medium text-gray-700">평점</label>
         <select

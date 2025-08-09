@@ -4,17 +4,18 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
+import ImageUpload from './ImageUpload';
 
 type NewCrimeCase = {
   id?: number;
+  title: string;
   category?: string;
   method: string;
   image_urls?: string[];
+  link_url?: string; // [수정됨] link_url 타입 추가
   is_published: boolean;
 };
 
-// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
 type FormInputs = Omit<NewCrimeCase, 'image_urls'> & {
   imageFile_0?: FileList;
   imageFile_1?: FileList;
@@ -30,15 +31,12 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
 
   const getSanitizedInitialValues = () => {
     if (!initialData) {
-      return {
-        is_published: true,
-      };
+      return { is_published: true };
     }
-    const { ...formDefaults } = initialData;
+    const { image_urls, ...formDefaults } = initialData;
     return formDefaults;
   };
 
-  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
     defaultValues: getSanitizedInitialValues(),
   });
@@ -50,12 +48,12 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
     setMessage(null);
     const formData = new FormData();
 
+    formData.append('title', data.title);
     formData.append('method', data.method);
     formData.append('is_published', String(data.is_published));
     formData.append('category', data.category || '');
+    formData.append('link_url', data.link_url || '');
 
-
-    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
     let fileAttached = false;
     for (let i = 0; i < 3; i++) {
       const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
@@ -70,7 +68,6 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
       return;
     }
 
-
     const url = isEditMode ? `/api/admin/new-crime-cases/${initialData?.id}` : '/api/admin/new-crime-cases';
     const method = 'POST';
 
@@ -84,9 +81,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
 
       setMessage({ type: 'success', text: `신종범죄 사례가 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
 
-      if (!isEditMode) {
-        reset();
-      }
+      if (!isEditMode) reset();
 
       router.refresh();
       if (isEditMode) {
@@ -106,6 +101,17 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
           {message.text}
         </div>
       )}
+
+      <div>
+        <label htmlFor="title" className="block text-sm font-medium text-gray-700">제목</label>
+        <input
+          id="title"
+          {...register('title', { required: '제목은 필수입니다.' })}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+        />
+        {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
+      </div>
+
       <div>
         <label htmlFor="category" className="block text-sm font-medium text-gray-700">카테고리</label>
         <input
@@ -126,16 +132,26 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
         {errors.method && <p className="mt-1 text-sm text-red-600">{errors.method.message}</p>}
       </div>
 
-      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           관련 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
+          <p className="text-red-600 inline-block ml-2">* 이미지 첨부는 필수입니다.</p>
         </label>
         <ImageUpload
           register={register}
           watch={watch}
           setValue={setValue}
           initialImageUrls={initialData?.image_urls || []}
+        />
+      </div>
+      <div>
+        <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
+        <input
+          id="link_url"
+          type="url"
+          placeholder="https://example.com"
+          {...register('link_url')}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
 

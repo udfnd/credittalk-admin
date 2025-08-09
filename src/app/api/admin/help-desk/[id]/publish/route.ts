@@ -33,7 +33,7 @@ export async function POST(
       // 공개 처리: new_crime_cases에 등록
       const { data: question, error: questionError } = await supabaseAdmin
         .from('help_questions')
-        .select('content, user_id')
+        .select('case_summary, content, user_id')
         .eq('id', questionId)
         .single();
 
@@ -45,6 +45,7 @@ export async function POST(
       const { error: upsertError } = await supabaseAdmin
         .from('new_crime_cases')
         .upsert({
+          title: question.case_summary, // 문의 제목을 범죄 수법으로 사용
           method: question.content, // 문의 제목을 범죄 수법으로 사용
           is_published: true,
           user_id: question.user_id, // 문의 작성자를 사례 작성자로 지정

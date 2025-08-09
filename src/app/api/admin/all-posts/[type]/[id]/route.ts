@@ -21,8 +21,8 @@ function getTableAndContentColumn(type: string): { tableName: string | null; con
     reviews: { tableName: 'reviews', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' },
     incident_photos: { tableName: 'incident_photos', contentColumn: 'description', titleColumn: 'title', userColumn: 'uploader_id' },
     'incident-photos': { tableName: 'incident_photos', contentColumn: 'description', titleColumn: 'title', userColumn: 'uploader_id' }, // alias for incident_photos
-    new_crime_cases: { tableName: 'new_crime_cases', contentColumn: 'method', titleColumn: 'method', userColumn: 'user_id' },
-    'new-crime-cases': { tableName: 'new_crime_cases', contentColumn: 'method', titleColumn: 'method', userColumn: 'user_id' }, // alias for new_crime_cases
+    new_crime_cases: { tableName: 'new_crime_cases', contentColumn: 'method', titleColumn: 'title', userColumn: 'user_id' },
+    'new-crime-cases': { tableName: 'new_crime_cases', contentColumn: 'method', titleColumn: 'title', userColumn: 'user_id' }, // alias for new_crime_cases
     help_questions: { tableName: 'help_questions', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' },
     'help-questions': { tableName: 'help_questions', contentColumn: 'content', titleColumn: 'title', userColumn: 'user_id' }, // alias for help_questions
     notices: { tableName: 'notices', contentColumn: 'content', titleColumn: 'title', userColumn: null }, // user_id 대신 author_name 사용

@@ -1,14 +1,15 @@
 // src/app/admin/new-crime-cases/page.tsx
 'use client';
 
-import { useEffect, useState, Fragment } from 'react'; // Fragment 추가
+import { useEffect, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import CommentForm from '@/components/CommentForm'; // CommentForm 임포트
+import CommentForm from '@/components/CommentForm';
 
 interface NewCrimeCase {
   id: number;
   created_at: string;
+  title: string; // [수정됨] title 필드 추가
   method: string;
   is_published: boolean;
   views: number;
@@ -20,7 +21,7 @@ export default function ManageNewCrimeCasesPage() {
   const [cases, setCases] = useState<NewCrimeCase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openCommentFormId, setOpenCommentFormId] = useState<number | null>(null); // 댓글 폼 상태 추가
+  const [openCommentFormId, setOpenCommentFormId] = useState<number | null>(null);
 
   const fetchCases = async () => {
     setIsLoading(true);
@@ -80,7 +81,8 @@ export default function ManageNewCrimeCasesPage() {
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">범죄 수법</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">범죄 수법 (요약)</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">조회수</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
@@ -91,9 +93,12 @@ export default function ManageNewCrimeCasesPage() {
           {cases.map(item => (
             <Fragment key={item.id}>
               <tr className={item.is_pinned ? 'bg-indigo-50' : ''}>
-                <td data-label="범죄 수법" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {item.is_pinned && <span className="font-bold text-indigo-600">[고정] </span>}
-                  <Link href={`/admin/view/new-crime-cases/${item.id}`} className=" hover:text-indigo-900">{item.method}</Link>
+                  <Link href={`/admin/view/new-crime-cases/${item.id}`} className="hover:text-indigo-900">{item.title}</Link>
+                </td>
+                <td data-label="범죄 수법" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate">
+                  {item.method}
                 </td>
                 <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                   {item.is_published
@@ -116,7 +121,7 @@ export default function ManageNewCrimeCasesPage() {
               </tr>
               {openCommentFormId === item.id && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <CommentForm
                       postId={item.id}
                       boardType="new_crime_cases"

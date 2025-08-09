@@ -16,8 +16,10 @@ async function isAdmin(): Promise<boolean> {
 }
 
 type NewCrimeCaseUpdate = {
+  title: string;
   method: string;
   is_published: boolean;
+  link_url?: string | null;
   image_urls?: string[] | null;
 };
 
@@ -57,9 +59,12 @@ export async function POST(
     const formData = await request.formData();
 
     const updates: NewCrimeCaseUpdate = {
+      title: formData.get('title') as string,
       method: formData.get('method') as string,
       is_published: formData.get('is_published') === 'true',
+      link_url: formData.get('link_url') as string | null,
     };
+
 
     const imageFiles = formData.getAll('imageFile') as File[];
     const BUCKET_NAME = 'post-images';

@@ -52,12 +52,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
+    const title = formData.get('title') as string; // [수정됨] title 필드 추가
     const methodText = formData.get('method') as string;
     const is_published = formData.get('is_published') === 'true';
     const imageFiles = formData.getAll('imageFile') as File[];
+    const link_url = formData.get('link_url') as string | null;
 
-    if (!methodText) {
-      return new NextResponse('Method is required', { status: 400 });
+    if (!title || !methodText) {
+      return new NextResponse('Title and Method are required', { status: 400 });
     }
 
     const imageUrls: string[] = [];
@@ -91,10 +93,12 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from('new_crime_cases')
       .insert({
+        title,
         method: methodText,
         image_urls: imageUrls.length > 0 ? imageUrls : null,
         is_published,
         user_id: user.id,
+        link_url,
       })
       .select()
       .single();
