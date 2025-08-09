@@ -3,12 +3,13 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Link from 'next/link';
-import AdminUserLayout from '@/components/AdminUserLayout'; // 새로 만든 레이아웃 import
+import AdminUserLayout from '@/components/AdminUserLayout';
 
 interface UserProfile {
   id: number;
   created_at: string;
   name: string;
+  nickname: string; // [수정됨] 닉네임 필드 추가
   phone_number: string;
   job_type: string;
   auth_user_id: string;
@@ -65,7 +66,7 @@ export default function ManageUsersPage() {
           throw new Error(await response.text() || 'Failed to delete user.');
         }
 
-        await fetchUsers(searchQuery); // 현재 검색 상태를 유지하며 목록 새로고침
+        await fetchUsers(searchQuery);
         alert('사용자가 성공적으로 삭제되었습니다.');
 
       } catch (err) {
@@ -76,7 +77,6 @@ export default function ManageUsersPage() {
   };
 
   return (
-    // AdminUserLayout으로 전체 컨텐츠를 감쌉니다.
     <AdminUserLayout>
       <div className="mb-6">
         <form onSubmit={handleSearch} className="flex gap-2">
@@ -103,9 +103,10 @@ export default function ManageUsersPage() {
           <table className="min-w-full divide-y divide-gray-200 responsive-table">
             <thead className="bg-gray-50">
             <tr>
-              {/* [수정됨] 번호 헤더 추가 */}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">번호</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+              {/* [수정됨] 닉네임 헤더 추가 */}
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">닉네임</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">직업군</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">관리자</th>
@@ -114,16 +115,15 @@ export default function ManageUsersPage() {
             </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
-            {/* [수정됨] map 함수에 index 파라미터를 추가하여 사용합니다. */}
             {users.map((user, index) => (
               <tr key={user.id}>
-                {/* [수정됨] 번호 셀 추가 (index는 0부터 시작하므로 +1) */}
                 <td data-label="번호" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                 <td data-label="이름" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   <Link href={`/admin/users/${user.auth_user_id}/activity`} className="text-indigo-600 hover:text-indigo-900 hover:underline">
                     {user.name}
                   </Link>
                 </td>
+                <td data-label="닉네임" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.nickname || 'N/A'}</td>
                 <td data-label="연락처" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.phone_number}</td>
                 <td data-label="직업군" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.job_type}</td>
                 <td data-label="관리자" className="px-6 py-4 whitespace-nowrap text-sm">
@@ -138,7 +138,7 @@ export default function ManageUsersPage() {
                   <button
                     onClick={() => handleDelete(user.auth_user_id, user.name)}
                     className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={user.is_admin} // 관리자 계정은 삭제 불가
+                    disabled={user.is_admin}
                   >
                     차단
                   </button>
