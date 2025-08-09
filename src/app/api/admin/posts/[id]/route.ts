@@ -58,11 +58,11 @@ export async function PUT(
       link_url = 'https://' + link_url;
     }
 
-    const updates: { [key: string]: any } = {
+    const updates: { [key: string]: string } = {
       title: formData.get('title') as string,
       content: formData.get('content') as string,
       category: formData.get('category') as string,
-      link_url: link_url, // [수정됨] link_url 추가
+      link_url: link_url,
     };
 
     const imageFiles = formData.getAll('imageFile') as File[];
@@ -73,7 +73,7 @@ export async function PUT(
       if (currentPost?.image_urls && currentPost.image_urls.length > 0) {
         const oldImagePaths = currentPost.image_urls.map((url: string) => {
           try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch (e) { return null; }
+          catch (_) { return null; }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
@@ -111,7 +111,6 @@ export async function PUT(
   }
 }
 
-// ... (DELETE 함수는 기존과 동일)
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -146,7 +145,7 @@ export async function DELETE(
       const BUCKET_NAME = 'post-images';
       const imagePaths = post.image_urls.map((url: string) => {
         try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-        catch (e) { return null; }
+        catch (_) { return null; }
       }).filter(Boolean);
 
       if (imagePaths.length > 0) {

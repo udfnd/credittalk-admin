@@ -5,7 +5,6 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUpload from './ImageUpload';
-import { FieldValues } from 'react-hook-form';
 
 // [수정됨] 타입에 link_url 추가
 interface PostData {
@@ -44,7 +43,6 @@ export default function PostForm({ initialData }: PostFormProps) {
     formData.append('content', data.content);
     formData.append('category', data.category);
 
-    // [수정됨] link_url을 처리하여 https://를 자동으로 추가합니다.
     let linkUrl = data.link_url || '';
     if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
       linkUrl = 'https://' + linkUrl;
@@ -128,9 +126,9 @@ export default function PostForm({ initialData }: PostFormProps) {
           이미지 (최대 3장, 선택 사항)
         </label>
         <ImageUpload
-          register={register as any}
-          watch={watch as any}
-          setValue={setValue as any}
+          register={register}
+          watch={watch}
+          setValue={setValue}
           initialImageUrls={initialData?.image_urls || []}
         />
       </div>

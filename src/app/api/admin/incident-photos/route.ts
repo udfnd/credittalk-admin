@@ -3,7 +3,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { v4 as uuidv4 } from 'uuid';
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
