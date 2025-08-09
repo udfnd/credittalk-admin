@@ -1,10 +1,17 @@
 // src/app/api/admin/posts/[id]/route.ts
-// ... (GET, DELETE, isRequestFromAdmin 함수는 기존과 동일)
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+
+type PostUpdatePayload = {
+  title: string;
+  content: string | null;
+  category: string;
+  link_url: string | null;
+  image_urls?: string[];
+};
 
 async function isRequestFromAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -17,9 +24,9 @@ async function isRequestFromAdmin(): Promise<boolean> {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -38,12 +45,12 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-
+// 게시글 수정
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -58,7 +65,7 @@ export async function PUT(
       link_url = 'https://' + link_url;
     }
 
-    const updates: { [key: string]: string } = {
+    const updates: PostUpdatePayload = {
       title: formData.get('title') as string,
       content: formData.get('content') as string,
       category: formData.get('category') as string,
@@ -73,7 +80,7 @@ export async function PUT(
       if (currentPost?.image_urls && currentPost.image_urls.length > 0) {
         const oldImagePaths = currentPost.image_urls.map((url: string) => {
           try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch (_) { return null; }
+          catch { return null; }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
@@ -113,9 +120,9 @@ export async function PUT(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   if (!await isRequestFromAdmin()) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -144,8 +151,9 @@ export async function DELETE(
     if (post?.image_urls && post.image_urls.length > 0) {
       const BUCKET_NAME = 'post-images';
       const imagePaths = post.image_urls.map((url: string) => {
+        // [수정됨] catch 블록의 불필요한 변수 '_'를 제거합니다.
         try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-        catch (_) { return null; }
+        catch { return null; }
       }).filter(Boolean);
 
       if (imagePaths.length > 0) {
