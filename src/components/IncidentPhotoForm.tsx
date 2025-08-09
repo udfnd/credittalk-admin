@@ -4,7 +4,9 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
+import ImageUpload from './ImageUpload';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; // [신규] Supabase 클라이언트 임포트
+import { v4 as uuidv4 } from 'uuid'; // [신규] 파일명 생성을 위해 uuid 임포트
 
 type IncidentPhoto = {
   id?: number;
@@ -16,7 +18,6 @@ type IncidentPhoto = {
   is_published: boolean;
 };
 
-// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
 type FormInputs = Omit<IncidentPhoto, 'image_urls'> & {
   imageFile_0?: FileList;
   imageFile_1?: FileList;
@@ -29,46 +30,79 @@ interface IncidentPhotoFormProps {
 
 export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProps) {
   const router = useRouter();
-  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
+  const supabase = createClientComponentClient(); // [신규] Supabase 클라이언트 초기화
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
     defaultValues: initialData || {
       is_published: true,
     }
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   const isEditMode = !!initialData;
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
 
-    const formData = new FormData();
-    formData.append('title', data.title);
-    formData.append('description', data.description || '');
-    formData.append('category', data.category || '');
-    formData.append('is_published', String(data.is_published));
-    formData.append('link_url', data.link_url || '');
-
-    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
-    let fileAttached = false;
-    for (let i = 0; i < 3; i++) {
-      const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-      if (fileList && fileList.length > 0) {
-        formData.append('imageFile', fileList[0]);
-        fileAttached = true;
-      }
-    }
-
-    if (!isEditMode && !fileAttached) {
-      setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
-      return;
-    }
-
-    const url = isEditMode ? `/api/admin/incident-photos/${initialData?.id}` : '/api/admin/incident-photos';
-    const method = 'POST';
-
     try {
-      const response = await fetch(url, { method, body: formData });
+      const imageFiles: File[] = [];
+      for (let i = 0; i < 3; i++) {
+        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
+        if (fileList && fileList.length > 0) {
+          imageFiles.push(fileList[0]);
+        }
+      }
+
+      let uploadedImageUrls: string[] = initialData?.image_urls || [];
+
+      if (imageFiles.length > 0) {
+        const BUCKET_NAME = 'post-images';
+        const newImageUrls: string[] = [];
+
+        for (const file of imageFiles) {
+          const fileExtension = file.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExtension}`;
+          const filePath = `incident-photos/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .upload(filePath, file);
+
+          if (uploadError) {
+            throw new Error(`Storage Error: ${uploadError.message}`);
+          }
+
+          const { data: { publicUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+          if(publicUrl) newImageUrls.push(publicUrl);
+        }
+
+        // 수정 모드일 경우 기존 이미지를 새 이미지로 교체, 생성 모드일 경우 그냥 할당
+        uploadedImageUrls = isEditMode ? newImageUrls : newImageUrls;
+      }
+
+      if (!isEditMode && uploadedImageUrls.length === 0) {
+        setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
+        return;
+      }
+
+      // [수정됨] 이제 FormData 대신 JSON으로 서버에 데이터를 전송합니다.
+      const payload = {
+        title: data.title,
+        description: data.description || '',
+        category: data.category || '',
+        is_published: data.is_published,
+        link_url: data.link_url || '',
+        image_urls: uploadedImageUrls,
+        // 수정 모드일 때, 기존 이미지 URL을 보내서 서버가 어떤 파일을 삭제해야 할지 알게 함
+        existing_image_urls: isEditMode ? initialData?.image_urls : undefined,
+      };
+
+      const url = isEditMode ? `/api/admin/incident-photos/${initialData?.id}` : '/api/admin/incident-photos';
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -122,7 +156,6 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
           initialImageUrls={initialData?.image_urls || []}
         />
       </div>
-
       <div>
         <label htmlFor="description" className="block text-sm font-medium text-gray-700">설명</label>
         <textarea
@@ -132,7 +165,6 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
-
       <div>
         <label htmlFor="category" className="block text-sm font-medium text-gray-700">카테고리</label>
         <input
@@ -146,13 +178,17 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
         <input
           id="link_url"
-          type="url"
-          placeholder="https://example.com"
-          {...register('link_url')}
+          type="text"
+          placeholder="example.com"
+          {...register('link_url', {
+            pattern: {
+              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
+              message: "올바른 URL 형식이 아닙니다."
+            }
+          })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
-
       <div className="flex items-center">
         <input
           id="is_published"
@@ -162,7 +198,6 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
         />
         <label htmlFor="is_published" className="ml-2 block text-sm text-gray-900">게시</label>
       </div>
-
       <button
         type="submit"
         disabled={isSubmitting}

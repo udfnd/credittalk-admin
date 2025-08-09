@@ -7,7 +7,7 @@ export interface AnalysisOptionsByCategory {
     [category: string]: AnalysisOption[];
 }
 
-export const analysisOptionsData: AnalysisOptionsByCategory = {
+const rawAnalysisOptions: AnalysisOptionsByCategory = {
     '보이스피싱, 전기통신금융사기, 로맨스 스캠 사기': [
         { result: '100% 사기. (신고 요망)', message: '수사 기관에 신고하시기 바랍니다. 크레딧톡에 계좌, 전화번호, SNS 닉네임을 등록해 주세요.' },
         { result: '보이스 피싱 사기 의심.', message: '돈을 전달 / 이체 / 안전계좌로 옮기라고 유도는 100% 사기입니다. 전화번호를 재확인하시고, 계좌번호가 개인 계좌일 경우 사기일 확률이 매우 높습니다.' },
@@ -51,7 +51,7 @@ export const analysisOptionsData: AnalysisOptionsByCategory = {
         { result: '정상 거래', message: '정상 거래입니다.' },
         { result: '민사 사건', message: '변호사, 법무사 상담 후 소장을 제출하세요.' },
     ],
-    '노쇼 대리구매 사기': [ // 스키마에 '노쇼, 대리구매, 사기' 또는 '노쇼' 등으로 정의된 카테고리명 확인 필요
+    '노쇼 대리구매 사기': [
         { result: '100% 사기 (신고 요망)', message: '수사기관에 곧바로 신고하세요. 크레딧톡에 계좌, 전화번호, SNS 닉네임을 등록해 주세요.' },
         { result: '사기 의심', message: '무조건 예약금을 받고 거래를 진행하세요.' },
         { result: '정상 거래', message: '정상 거래입니다.' },
@@ -71,4 +71,15 @@ export const analysisOptionsData: AnalysisOptionsByCategory = {
         { result: '100% 절도죄 (신고 요망)', message: '수사 기관에 신고하시기 바랍니다. 크레딧톡에 계좌, 전화번호, SNS 닉네임을 등록해 주세요.' },
         { result: '경계 요망', message: '해당 인물이 대여하러 오면 피해를 입을 확률이 높으니 경계하시길 바랍니다.' },
     ],
+
 };
+
+const handler = {
+    get: function(target: AnalysisOptionsByCategory, prop: string) {
+        // 요청된 카테고리(prop)가 객체에 존재하면 그대로 반환하고,
+        // 존재하지 않으면 '보이스피싱...' 카테고리의 데이터를 반환합니다.
+        return target[prop] || target['보이스피싱, 전기통신금융사기, 로맨스 스캠 사기'];
+    }
+};
+
+export const analysisOptionsData: AnalysisOptionsByCategory = new Proxy(rawAnalysisOptions, handler);

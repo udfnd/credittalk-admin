@@ -52,35 +52,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const formData = await request.formData();
-    const title = formData.get('title') as string;
-    const imageFiles = formData.getAll('imageFile') as File[]; // getAll로 변경
-    const link_url = formData.get('link_url') as string | null;
+    // [수정됨] FormData 대신 JSON 본문을 파싱합니다.
+    const { title, description, category, is_published, link_url, image_urls } = await request.json();
 
-    if (!title || imageFiles.length === 0 || imageFiles[0].size === 0) {
-      return new NextResponse('Title and at least one Image File are required', { status: 400 });
+    if (!title || !image_urls || image_urls.length === 0) {
+      return new NextResponse('Title and at least one image URL are required', { status: 400 });
     }
-
-    const imageUrls: string[] = []; // URL 배열
-    const BUCKET_NAME = 'incident-photos';
-
-    for (const imageFile of imageFiles) {
-      const fileExtension = imageFile.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExtension}`;
-
-      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .upload(fileName, imageFile, { contentType: imageFile.type });
-
-      if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
-
-      const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
-      if (publicUrl) imageUrls.push(publicUrl);
-    }
-
-    const description = formData.get('description') as string;
-    const category = formData.get('category') as string;
-    const is_published = formData.get('is_published') === 'true';
 
     const { data: dbData, error: dbError } = await supabaseAdmin
       .from('incident_photos')
@@ -88,18 +65,15 @@ export async function POST(request: Request) {
         title,
         description: description || '',
         category: category || '',
-        image_urls: imageUrls, // 배열 저장
+        image_urls: image_urls, // 클라이언트에서 직접 업로드한 URL 배열
         is_published,
-        uploader_id: null,
+        uploader_id: null, // 관리자가 직접 업로드하므로 null 처리
         link_url,
       }])
       .select()
       .single();
 
     if (dbError) {
-      // DB 에러 시 업로드된 이미지 롤백
-      const imageNames = imageUrls.map(url => url.split('/').pop()).filter(Boolean);
-      if (imageNames.length > 0) await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
       throw new Error(`Database Error: ${dbError.message}`);
     }
 

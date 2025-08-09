@@ -33,7 +33,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
     if (!initialData) {
       return { is_published: true };
     }
-    const { image_urls, ...formDefaults } = initialData;
+    const { ...formDefaults } = initialData;
     return formDefaults;
   };
 
@@ -52,7 +52,13 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
     formData.append('method', data.method);
     formData.append('is_published', String(data.is_published));
     formData.append('category', data.category || '');
-    formData.append('link_url', data.link_url || '');
+
+    let linkUrl = data.link_url || '';
+    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+      linkUrl = 'https://' + linkUrl;
+    }
+    formData.append('link_url', linkUrl);
+
 
     let fileAttached = false;
     for (let i = 0; i < 3; i++) {
@@ -148,13 +154,17 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
         <input
           id="link_url"
-          type="url"
-          placeholder="https://example.com"
-          {...register('link_url')}
+          type="text"
+          placeholder="example.com"
+          {...register('link_url', {
+            pattern: {
+              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
+              message: "올바른 URL 형식이 아닙니다."
+            }
+          })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
-
       <div className="flex items-center">
         <input
           id="is_published"
@@ -164,7 +174,6 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
         />
         <label htmlFor="is_published" className="ml-2 block text-sm text-gray-900">게시</label>
       </div>
-
       <button
         type="submit"
         disabled={isSubmitting}

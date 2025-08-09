@@ -49,10 +49,14 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
     formData.append('content', data.content || '');
     formData.append('author_name', data.author_name || '관리자');
     formData.append('is_published', String(data.is_published));
-    formData.append('link_url', data.link_url || '');
     formData.append('category', data.category || '');
 
-    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
+    let linkUrl = data.link_url || '';
+    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+      linkUrl = 'https://' + linkUrl;
+    }
+    formData.append('link_url', linkUrl);
+
     for (let i = 0; i < 3; i++) {
       const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
       if (fileList && fileList.length > 0) {
@@ -121,8 +125,6 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
-
-      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
@@ -133,29 +135,22 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
           setValue={setValue}
           initialImageUrls={initialData?.image_urls || []}
         />
-        {/*
-          <input
-            {...register('imageFile', { required: !isEditMode })}
-            ...
-          />
-          와 같은 필드 레벨의 에러 메시지는 ImageUpload 컴포넌트 내에서 처리하거나,
-          상위 폼에서 여러 파일 필드를 종합하여 유효성을 검사할 수 있습니다.
-          여기서는 단순화를 위해 생략합니다.
-        */}
       </div>
-
-
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
         <input
           id="link_url"
-          type="url"
-          placeholder="https://example.com"
-          {...register('link_url')}
+          type="text"
+          placeholder="example.com"
+          {...register('link_url', {
+            pattern: {
+              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
+              message: "올바른 URL 형식이 아닙니다."
+            }
+          })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
       </div>
-
       <div>
         <label htmlFor="author_name" className="block text-sm font-medium text-gray-700">작성자</label>
         <input

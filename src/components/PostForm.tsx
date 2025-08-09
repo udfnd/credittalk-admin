@@ -4,52 +4,55 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
+import ImageUpload from './ImageUpload';
+import { FieldValues } from 'react-hook-form';
 
-// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
-type PostInputs = {
-  title: string;
-  content: string;
-  category: string;
-  imageFile_0?: FileList;
-  imageFile_1?: FileList;
-  imageFile_2?: FileList;
-};
-
-// 수정 시 초기 데이터를 받기 위한 타입
+// [수정됨] 타입에 link_url 추가
 interface PostData {
   id?: number;
   title: string;
   content: string;
   category: string;
+  link_url?: string;
   image_urls?: string[];
 }
 
-// 컴포넌트 Props 타입 정의
+// [수정됨] FormInputs 타입에 link_url 추가
+type FormInputs = Omit<PostData, 'image_urls'> & {
+  imageFile_0?: FileList;
+  imageFile_1?: FileList;
+  imageFile_2?: FileList;
+};
+
 interface PostFormProps {
   initialData?: PostData;
 }
 
 export default function PostForm({ initialData }: PostFormProps) {
   const router = useRouter();
-  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<PostInputs>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
     defaultValues: initialData || {},
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const isEditMode = !!initialData;
 
-  const onSubmit: SubmitHandler<PostInputs> = async (data) => {
+  const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
     const formData = new FormData();
     formData.append('title', data.title);
     formData.append('content', data.content);
     formData.append('category', data.category);
 
-    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
+    // [수정됨] link_url을 처리하여 https://를 자동으로 추가합니다.
+    let linkUrl = data.link_url || '';
+    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+      linkUrl = 'https://' + linkUrl;
+    }
+    formData.append('link_url', linkUrl);
+
     for (let i = 0; i < 3; i++) {
-      const fileList = data[`imageFile_${i}` as keyof PostInputs] as FileList | undefined;
+      const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
       if (fileList && fileList.length > 0) {
         formData.append('imageFile', fileList[0]);
       }
@@ -120,17 +123,32 @@ export default function PostForm({ initialData }: PostFormProps) {
         />
       </div>
 
-      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           이미지 (최대 3장, 선택 사항)
         </label>
         <ImageUpload
-          register={register}
-          watch={watch}
-          setValue={setValue}
+          register={register as any}
+          watch={watch as any}
+          setValue={setValue as any}
           initialImageUrls={initialData?.image_urls || []}
         />
+      </div>
+      <div>
+        <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
+        <input
+          id="link_url"
+          type="text"
+          placeholder="example.com"
+          {...register('link_url', {
+            pattern: {
+              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
+              message: "올바른 URL 형식이 아닙니다."
+            }
+          })}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+        />
+        {errors.link_url && <p className="mt-1 text-sm text-red-600">{errors.link_url.message}</p>}
       </div>
 
       <button

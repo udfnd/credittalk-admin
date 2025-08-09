@@ -1,5 +1,5 @@
 // src/app/api/admin/posts/route.ts
-import { supabaseAdmin } from '@/lib/supabase/admin'; // supabaseAdmin이 한 번만 import 되었는지 확인
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
@@ -28,9 +28,15 @@ export async function POST(request: NextRequest) {
     const content = formData.get('content') as string | null;
     const category = formData.get('category') as string;
     const imageFiles = formData.getAll('imageFile') as File[];
+    const link_url_input = formData.get('link_url') as string | null; // [수정됨] link_url 필드 추가
 
     if (!title || !category) {
       return new NextResponse('Title and category are required', { status: 400 });
+    }
+
+    let link_url = link_url_input || '';
+    if (link_url && !/^https?:\/\//i.test(link_url)) {
+      link_url = 'https://' + link_url;
     }
 
     const imageUrls: string[] = [];
@@ -61,6 +67,7 @@ export async function POST(request: NextRequest) {
         category,
         image_urls: imageUrls.length > 0 ? imageUrls : null,
         user_id: adminUserId,
+        link_url,
       })
       .select()
       .single();
