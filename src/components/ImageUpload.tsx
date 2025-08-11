@@ -85,9 +85,7 @@ export default function ImageUpload<T extends FieldValues>({ register, setValue,
       return newPreviews;
     });
 
-    // [수정됨] 타입 단언을 통해 TypeScript에 `fieldName`이 T의 유효한 키임을 알려줍니다.
     const fieldName = `imageFile_${index}` as Path<T>;
-    // [수정됨] `undefined`를 PathValue 타입으로 단언하여 타입 불일치 문제를 해결합니다.
     setValue(fieldName, undefined as PathValue<T, Path<T>>, { shouldValidate: true });
   };
 
@@ -114,7 +112,6 @@ export default function ImageUpload<T extends FieldValues>({ register, setValue,
                   id={`imageFile_${index}`}
                   type="file"
                   accept="image/*"
-                  // [수정됨] 타입 단언을 사용하여 TypeScript에 `fieldName`이 T의 유효한 키임을 알려줍니다.
                   {...register(`imageFile_${index}` as Path<T>)}
                   className="hidden"
                 />

@@ -143,8 +143,6 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
         />
         {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
       </div>
-
-      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           이미지 파일 {isEditMode && '(변경할 경우에만 업로드)'}
