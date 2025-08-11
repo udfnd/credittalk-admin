@@ -5,6 +5,7 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUpload from './ImageUpload';
+import { v4 as uuidv4 } from 'uuid';
 
 type NewCrimeCase = {
   id?: number;
@@ -12,7 +13,7 @@ type NewCrimeCase = {
   category?: string;
   method: string;
   image_urls?: string[];
-  link_url?: string; // [수정됨] link_url 타입 추가
+  link_url?: string;
   is_published: boolean;
 };
 
@@ -28,50 +29,91 @@ interface NewCrimeCaseFormProps {
 
 export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps) {
   const router = useRouter();
-
-  const getSanitizedInitialValues = () => {
-    if (!initialData) {
-      return { is_published: true };
-    }
-    const { ...formDefaults } = initialData;
-    return formDefaults;
-  };
-
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
-    defaultValues: getSanitizedInitialValues(),
+    defaultValues: initialData || { is_published: true },
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   const isEditMode = !!initialData;
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
-    const formData = new FormData();
-
-    formData.append('title', data.title);
-    formData.append('method', data.method);
-    formData.append('is_published', String(data.is_published));
-    formData.append('category', data.category || '');
-
-    let linkUrl = data.link_url || '';
-    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-      linkUrl = 'https://' + linkUrl;
-    }
-    formData.append('link_url', linkUrl);
-
-
-    for (let i = 0; i < 3; i++) {
-      const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-      if (fileList && fileList.length > 0) {
-        formData.append('imageFile', fileList[0]);
-      }
-    }
-
-    const url = isEditMode ? `/api/admin/new-crime-cases/${initialData?.id}` : '/api/admin/new-crime-cases';
-    const method = 'POST';
 
     try {
-      const response = await fetch(url, { method, body: formData });
+      const imageFiles: File[] = [];
+      for (let i = 0; i < 3; i++) {
+        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
+        if (fileList && fileList.length > 0) {
+          imageFiles.push(fileList[0]);
+        }
+      }
+
+      let uploadedImageUrls: string[] = initialData?.image_urls || [];
+
+      if (imageFiles.length > 0) {
+        const BUCKET_NAME = 'post-images';
+        const newImageUrls: string[] = [];
+
+        for (const file of imageFiles) {
+          const fileExtension = file.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExtension}`;
+          const filePath = `new-crime-cases/${fileName}`;
+
+          // 1. 공통 API를 통해 Presigned URL 요청
+          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath }),
+          });
+
+          if (!presignedUrlResponse.ok) {
+            const error = await presignedUrlResponse.json();
+            throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+          }
+          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+          // 2. Presigned URL로 파일 직접 업로드
+          const uploadResponse = await fetch(presignedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+
+          if (!uploadResponse.ok) {
+            throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
+          }
+          newImageUrls.push(publicUrl);
+        }
+        uploadedImageUrls = newImageUrls;
+      }
+
+      if (!isEditMode && uploadedImageUrls.length === 0) {
+        setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
+        return;
+      }
+
+      let linkUrl = data.link_url || '';
+      if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+        linkUrl = 'https://' + linkUrl;
+      }
+
+      // 3. 최종 데이터를 JSON으로 서버에 전송
+      const payload = {
+        title: data.title,
+        method: data.method,
+        is_published: data.is_published,
+        category: data.category || '',
+        link_url: linkUrl,
+        image_urls: uploadedImageUrls,
+      };
+
+      const url = isEditMode ? `/api/admin/new-crime-cases/${initialData?.id}` : '/api/admin/new-crime-cases';
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -79,7 +121,6 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
       }
 
       setMessage({ type: 'success', text: `신종범죄 사례가 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
-
       if (!isEditMode) reset();
 
       router.refresh();

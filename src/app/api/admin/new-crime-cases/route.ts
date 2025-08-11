@@ -3,26 +3,69 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
-import { v4 as uuidv4 } from 'uuid';
 
-async function isAdmin(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+async function getAdminUser(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return null;
 
   const { data: isAdminResult, error } = await supabase.rpc('is_current_user_admin');
   if (error) {
     console.error("Admin check failed in new-crime-cases API:", error);
-    return false;
+    return null;
   }
-  return isAdminResult === true;
+  return isAdminResult ? user : null;
+}
+
+export async function POST(request: NextRequest) {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const adminUser = await getAdminUser(supabase);
+
+  if (!adminUser) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  try {
+    const { title, method, is_published, image_urls, link_url, category } = await request.json();
+
+    if (!title || !method) {
+      return new NextResponse('Title and Method are required', { status: 400 });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('new_crime_cases')
+      .insert({
+        title,
+        method,
+        image_urls: image_urls && image_urls.length > 0 ? image_urls : null,
+        is_published,
+        user_id: adminUser.id,
+        link_url,
+        category,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Database Error: ${error.message}`);
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown internal error';
+    console.error('New Crime Case POST Error:', errorMessage);
+    return new NextResponse(errorMessage, { status: 500 });
+  }
 }
 
 export async function GET() {
-  if (!(await isAdmin())) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new NextResponse('Unauthorized', { status: 401 });
+
+  const { data: isAdmin } = await supabase.rpc('is_current_user_admin');
+  if (!isAdmin) return new NextResponse('Forbidden', { status: 403 });
 
   try {
     const { data, error } = await supabaseAdmin
@@ -37,80 +80,6 @@ export async function GET() {
     return NextResponse.json(data);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    return new NextResponse(errorMessage, { status: 500 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user || !(await isAdmin())) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
-
-  try {
-    const formData = await request.formData();
-    const title = formData.get('title') as string; // [수정됨] title 필드 추가
-    const methodText = formData.get('method') as string;
-    const is_published = formData.get('is_published') === 'true';
-    const imageFiles = formData.getAll('imageFile') as File[];
-    const link_url = formData.get('link_url') as string | null;
-
-    if (!title || !methodText) {
-      return new NextResponse('Title and Method are required', { status: 400 });
-    }
-
-    const imageUrls: string[] = [];
-    const BUCKET_NAME = 'post-images';
-
-    for (const imageFile of imageFiles) {
-      if (imageFile && imageFile.size > 0) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin
-          .storage
-          .from(BUCKET_NAME)
-          .upload(`new-crime-cases/${fileName}`, imageFile);
-
-        if (uploadError) {
-          throw new Error(`Storage Error: ${uploadError.message}`);
-        }
-
-        const { data: { publicUrl } } = supabaseAdmin
-          .storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(uploadData.path);
-
-        if(publicUrl) {
-          imageUrls.push(publicUrl);
-        }
-      }
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('new_crime_cases')
-      .insert({
-        title,
-        method: methodText,
-        image_urls: imageUrls.length > 0 ? imageUrls : null,
-        is_published,
-        user_id: user.id,
-        link_url,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(`Database Error: ${error.message}`);
-    }
-
-    return NextResponse.json(data);
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown internal error';
-    console.error('New Crime Case POST Error:', errorMessage);
     return new NextResponse(errorMessage, { status: 500 });
   }
 }

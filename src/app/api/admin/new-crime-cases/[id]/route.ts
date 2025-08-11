@@ -3,7 +3,15 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
+
+interface NewCrimeCaseUpdatePayload {
+  title: string;
+  method: string;
+  is_published: boolean;
+  link_url?: string | null;
+  category?: string | null;
+  image_urls?: string[];
+}
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -15,17 +23,9 @@ async function isAdmin(): Promise<boolean> {
   return isAdminResult === true;
 }
 
-type NewCrimeCaseUpdate = {
-  title: string;
-  method: string;
-  is_published: boolean;
-  link_url?: string | null;
-  image_urls?: string[] | null;
-};
-
 export async function GET(
   _request: NextRequest,
-  { params }: {params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
 
@@ -45,9 +45,9 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-export async function POST(
+export async function PUT(
   request: NextRequest,
-  { params }: {params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
 
@@ -56,55 +56,31 @@ export async function POST(
   }
 
   try {
-    const formData = await request.formData();
+    const { title, method, is_published, link_url, category, image_urls } = await request.json();
 
-    const updates: NewCrimeCaseUpdate = {
-      title: formData.get('title') as string,
-      method: formData.get('method') as string,
-      is_published: formData.get('is_published') === 'true',
-      link_url: formData.get('link_url') as string | null,
+    const updates: Partial<NewCrimeCaseUpdatePayload> = {
+      title,
+      method,
+      is_published,
+      link_url,
+      category,
     };
 
-
-    const imageFiles = formData.getAll('imageFile') as File[];
     const BUCKET_NAME = 'post-images';
 
-    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
+    if (image_urls && Array.isArray(image_urls)) {
       const { data: currentCase } = await supabaseAdmin.from('new_crime_cases').select('image_urls').eq('id', id).single();
       if (currentCase?.image_urls && currentCase.image_urls.length > 0) {
         const oldImagePaths = currentCase.image_urls.map((url: string) => {
-          try {
-            return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1];
-          } catch {
-            return null;
-          }
+          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
+          catch { return null; }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
         }
       }
-
-      const newImageUrls: string[] = [];
-      for (const imageFile of imageFiles) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(`new-crime-cases/${fileName}`, imageFile);
-
-        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(uploadData.path);
-
-        if (publicUrl) {
-          newImageUrls.push(publicUrl);
-        }
-      }
-      updates.image_urls = newImageUrls;
+      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
@@ -115,16 +91,16 @@ export async function POST(
     if (error) throw new Error(error.message);
 
     return NextResponse.json({ message: 'Update successful' });
-
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     return new NextResponse(errorMessage, { status: 500 });
   }
 }
 
+
 export async function DELETE(
   _request: NextRequest,
-  { params }: {params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
 
