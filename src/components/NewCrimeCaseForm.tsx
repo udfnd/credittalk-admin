@@ -60,12 +60,10 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
     formData.append('link_url', linkUrl);
 
 
-    let fileAttached = false;
     for (let i = 0; i < 3; i++) {
       const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
       if (fileList && fileList.length > 0) {
         formData.append('imageFile', fileList[0]);
-        fileAttached = true;
       }
     }
 
