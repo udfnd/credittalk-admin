@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-// 스키마의 모든 컬럼을 포함하도록 인터페이스 확장
 interface ReportSummary {
   id: number;
   created_at: string;
@@ -20,7 +19,6 @@ interface ReportSummary {
     accountNumber: string;
     accountHolderName: string;
   }[] | null;
-  // 추가적으로 표시할 수 있는 유용한 필드들
   damage_amount: number | null;
   site_name: string | null;
   reporter_email: string | null;
@@ -37,7 +35,6 @@ export default function ReportListPage() {
       setIsLoading(true);
       setError(null);
 
-      // 뷰의 모든 컬럼을 가져오도록 `select('*')` 사용
       const { data, error: fetchError } = await supabase
         .from('admin_scammer_reports_view')
         .select('*')
@@ -55,10 +52,31 @@ export default function ReportListPage() {
     fetchReports();
   }, [supabase]);
 
+  // [신규] 삭제 처리 핸들러 함수
+  const handleDelete = async (reportId: number) => {
+    if (window.confirm(`정말로 이 신고(ID: ${reportId})를 삭제하시겠습니까? 연관된 증거 파일도 함께 삭제되며, 이 작업은 되돌릴 수 없습니다.`)) {
+      try {
+        const response = await fetch(`/api/admin/reports/${reportId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text() || '신고 삭제에 실패했습니다.');
+        }
+
+        // UI에서 즉시 해당 항목 제거
+        setReports(prevReports => prevReports.filter(r => r.id !== reportId));
+        alert('신고가 성공적으로 삭제되었습니다.');
+
+      } catch (err) {
+        alert(`오류: ${err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.'}`);
+      }
+    }
+  };
+
   if (isLoading) return <p className="text-center py-8">신고 목록을 불러오는 중...</p>;
   if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
 
-  // 복잡한 데이터를 보기 좋게 표시하는 헬퍼 컴포넌트
   const renderArray = (items: string[] | undefined | null) => {
     if (!items || items.length === 0) return 'N/A';
     return items.map((item, index) => <div key={index}>{item}</div>);
@@ -117,10 +135,13 @@ export default function ReportListPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium space-x-4">
                     <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
                       분석/수정
                     </Link>
+                    <button onClick={() => handleDelete(report.id)} className="text-red-600 hover:text-red-900">
+                      삭제
+                    </button>
                   </td>
                 </tr>
               ))}
