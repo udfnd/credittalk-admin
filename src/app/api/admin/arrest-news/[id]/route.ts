@@ -14,7 +14,6 @@ async function isAdmin(): Promise<boolean> {
   return isAdmin === true;
 }
 
-// 'any' 대신 사용할 명확한 타입 정의
 interface ArrestNewsUpdatePayload {
   title: string;
   content: string | null;
@@ -22,6 +21,30 @@ interface ArrestNewsUpdatePayload {
   is_published: boolean;
   link_url?: string | null;
   image_urls?: string[];
+  category?: string | null;
+}
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  if (!(await isAdmin())) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('arrest_news')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error(`Error fetching arrest news ID ${id}:`, error.message);
+    return new NextResponse(error.message, { status: 404 });
+  }
+  return NextResponse.json(data);
 }
 
 export async function POST(
@@ -35,7 +58,7 @@ export async function POST(
   }
 
   try {
-    const { title, content, author_name, is_published, link_url, image_urls } = await request.json();
+    const { title, content, author_name, is_published, link_url, image_urls, category } = await request.json();
 
     const updates: Partial<ArrestNewsUpdatePayload> = {
       title,
@@ -43,6 +66,7 @@ export async function POST(
       author_name,
       is_published,
       link_url,
+      category,
     };
 
     const BUCKET_NAME = 'arrest-news-images';
@@ -83,12 +107,30 @@ export async function DELETE(
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
+  const { data: newsItem, error: fetchError } = await supabaseAdmin
+    .from('arrest_news')
+    .select('image_urls')
+    .eq('id', id)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    return new NextResponse(fetchError.message, { status: 500 });
+  }
+
   const { error } = await supabaseAdmin
     .from('arrest_news')
     .delete()
     .eq('id', id);
 
   if (error) return new NextResponse(error.message, { status: 500 });
+
+  if (newsItem?.image_urls && newsItem.image_urls.length > 0) {
+    const BUCKET_NAME = 'arrest-news-images';
+    const imageNames = newsItem.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+    if (imageNames.length > 0) {
+      await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
+    }
+  }
 
   return new NextResponse(null, { status: 204 });
 }
