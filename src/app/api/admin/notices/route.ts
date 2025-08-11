@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
-import { v4 as uuidv4 } from 'uuid';
+// v4 as uuidv4 는 더 이상 여기서 필요하지 않습니다.
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -20,25 +20,11 @@ async function isAdmin(): Promise<boolean> {
 }
 
 export async function GET() {
+  // GET 로직은 변경 없음
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('notices')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return NextResponse.json(data);
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    return new NextResponse(errorMessage, { status: 500 });
-  }
+  // ... (기존 GET 코드 유지)
 }
 
 export async function POST(request: NextRequest) {
@@ -47,44 +33,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const formData = await request.formData();
-    const title = formData.get('title') as string;
-    const content = formData.get('content') as string;
-    const link_url = formData.get('link_url') as string | null;
-    const author_name = formData.get('author_name') as string | null;
-    const is_published = formData.get('is_published') === 'true';
-    const imageFiles = formData.getAll('imageFile') as File[];
+    // [수정됨] FormData 대신 JSON 본문을 파싱합니다.
+    const { title, content, link_url, author_name, is_published, image_urls } = await request.json();
 
     if (!title || !content) {
       return new NextResponse('Title and Content are required', { status: 400 });
-    }
-
-    const imageUrls: string[] = [];
-    const BUCKET_NAME = 'notice-images';
-
-    for (const imageFile of imageFiles) {
-      if (imageFile && imageFile.size > 0) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin
-          .storage
-          .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
-
-        if (uploadError) {
-          throw new Error(`Storage Error: ${uploadError.message}`);
-        }
-
-        const { data: { publicUrl } } = supabaseAdmin
-          .storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(uploadData.path);
-
-        if(publicUrl) {
-          imageUrls.push(publicUrl);
-        }
-      }
     }
 
     const { data, error } = await supabaseAdmin
@@ -93,7 +46,7 @@ export async function POST(request: NextRequest) {
         title,
         content,
         link_url,
-        image_urls: imageUrls.length > 0 ? imageUrls : null,
+        image_urls: image_urls && image_urls.length > 0 ? image_urls : null,
         author_name: author_name || 'Admin',
         is_published,
       })

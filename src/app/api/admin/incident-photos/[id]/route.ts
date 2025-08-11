@@ -3,7 +3,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -21,10 +20,9 @@ type PhotoUpdate = {
   category: string | null;
   is_published: boolean;
   link_url?: string | null;
-  image_urls?: string[] | null;
+  image_urls?: string[];
 };
 
-// [수정됨] 단일 사진 조회 시 테이블 대신 뷰를 사용합니다.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -53,47 +51,38 @@ export async function POST(
   const { id } = await params;
 
   if (!(await isAdmin())) {
-    return new NextResponse('Unauthorized', { status: 401 });
+    return new NextResponse(JSON.stringify({ message: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
 
   try {
-    const formData = await request.formData();
+    const { title, description, category, is_published, link_url, image_urls } = await request.json();
 
-    const updates: PhotoUpdate = {
-      title: formData.get('title') as string,
-      description: formData.get('description') as string | null,
-      category: formData.get('category') as string | null,
-      is_published: formData.get('is_published') === 'true',
-      link_url: formData.get('link_url') as string | null,
+    const updates: Partial<PhotoUpdate> = {
+      title,
+      description,
+      category,
+      is_published,
+      link_url,
     };
 
-    const imageFiles = formData.getAll('imageFile') as File[];
-    const BUCKET_NAME = 'incident-photos';
+    const BUCKET_NAME = 'post-images';
 
-    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
+    // 새 이미지가 제공된 경우(image_urls가 존재하고 내용이 있을 때)
+    if (image_urls && Array.isArray(image_urls)) {
+      // 1. 기존 이미지 삭제
       const { data: currentPhoto } = await supabaseAdmin.from('incident_photos').select('image_urls').eq('id', id).single();
       if (currentPhoto?.image_urls && currentPhoto.image_urls.length > 0) {
-        const oldImageNames = currentPhoto.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
-        if (oldImageNames.length > 0) {
-          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
+        const oldImagePaths = currentPhoto.image_urls.map((url: string) => {
+          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
+          catch { return null; }
+        }).filter(Boolean);
+
+        if (oldImagePaths.length > 0) {
+          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
         }
       }
-
-      const newImageUrls: string[] = [];
-      for (const imageFile of imageFiles) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
-
-        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
-        if (publicUrl) newImageUrls.push(publicUrl);
-      }
-      updates.image_urls = newImageUrls;
+      // 2. DB에 새 URL 업데이트
+      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
@@ -107,7 +96,7 @@ export async function POST(
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    return new NextResponse(errorMessage, { status: 500 });
+    return new NextResponse(JSON.stringify({ message: errorMessage }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 }
 

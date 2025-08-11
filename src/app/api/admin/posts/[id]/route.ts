@@ -3,15 +3,14 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 
-type PostUpdatePayload = {
+interface PostUpdatePayload {
   title: string;
   content: string | null;
   category: string;
   link_url: string | null;
   image_urls?: string[];
-};
+}
 
 async function isRequestFromAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -45,7 +44,6 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-// 게시글 수정
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -57,25 +55,18 @@ export async function PUT(
   }
 
   try {
-    const formData = await request.formData();
-    const link_url_input = formData.get('link_url') as string | null;
+    const { title, content, category, link_url, image_urls } = await request.json();
 
-    let link_url = link_url_input || '';
-    if (link_url && !/^https?:\/\//i.test(link_url)) {
-      link_url = 'https://' + link_url;
-    }
-
-    const updates: PostUpdatePayload = {
-      title: formData.get('title') as string,
-      content: formData.get('content') as string,
-      category: formData.get('category') as string,
-      link_url: link_url,
+    const updates: Partial<PostUpdatePayload> = {
+      title,
+      content,
+      category,
+      link_url,
     };
 
-    const imageFiles = formData.getAll('imageFile') as File[];
     const BUCKET_NAME = 'post-images';
 
-    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
+    if (image_urls && Array.isArray(image_urls)) {
       const { data: currentPost } = await supabaseAdmin.from('community_posts').select('image_urls').eq('id', id).single();
       if (currentPost?.image_urls && currentPost.image_urls.length > 0) {
         const oldImagePaths = currentPost.image_urls.map((url: string) => {
@@ -87,21 +78,7 @@ export async function PUT(
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
         }
       }
-
-      const newImageUrls: string[] = [];
-      for (const imageFile of imageFiles) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(`community-posts/${fileName}`, imageFile);
-
-        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
-        if (publicUrl) newImageUrls.push(publicUrl);
-      }
-      updates.image_urls = newImageUrls;
+      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
@@ -151,7 +128,6 @@ export async function DELETE(
     if (post?.image_urls && post.image_urls.length > 0) {
       const BUCKET_NAME = 'post-images';
       const imagePaths = post.image_urls.map((url: string) => {
-        // [수정됨] catch 블록의 불필요한 변수 '_'를 제거합니다.
         try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
         catch { return null; }
       }).filter(Boolean);

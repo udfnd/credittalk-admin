@@ -3,18 +3,15 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 
-// [수정됨] 업데이트에 사용될 데이터의 타입을 명확하게 정의합니다.
-type ReviewUpdatePayload = {
+interface ReviewUpdatePayload {
   title: string;
   content: string;
   rating: number;
   is_published: boolean;
   image_urls?: string[];
-};
+}
 
-// 관리자인지 확인하는 헬퍼 함수
 async function isRequestFromAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -24,7 +21,6 @@ async function isRequestFromAdmin(): Promise<boolean> {
   return isAdmin === true;
 }
 
-// 단일 후기 조회
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -48,7 +44,6 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-// 후기 수정 (PUT 메서드)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -60,18 +55,18 @@ export async function PUT(
   }
 
   try {
-    const formData = await request.formData();
-    const updates: ReviewUpdatePayload = {
-      title: formData.get('title') as string,
-      content: formData.get('content') as string,
-      rating: Number(formData.get('rating')),
-      is_published: formData.get('is_published') === 'true',
+    const { title, content, rating, is_published, image_urls } = await request.json();
+
+    const updates: Partial<ReviewUpdatePayload> = {
+      title,
+      content,
+      rating,
+      is_published,
     };
 
-    const imageFiles = formData.getAll('imageFile') as File[];
     const BUCKET_NAME = 'reviews-images';
 
-    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
+    if (image_urls && Array.isArray(image_urls)) {
       const { data: currentReview } = await supabaseAdmin.from('reviews').select('image_urls').eq('id', id).single();
       if (currentReview?.image_urls && currentReview.image_urls.length > 0) {
         const oldImageNames = currentReview.image_urls.map((url:string) => url.split('/').pop()).filter(Boolean);
@@ -79,22 +74,7 @@ export async function PUT(
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
         }
       }
-
-      const newImageUrls: string[] = [];
-      for (const imageFile of imageFiles) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
-
-        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
-        if (publicUrl) newImageUrls.push(publicUrl);
-      }
-      updates.image_urls = newImageUrls;
+      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
@@ -128,7 +108,7 @@ export async function DELETE(
       .eq('id', id)
       .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') { // 'PGRST116'는 'row not found' 오류
+    if (fetchError && fetchError.code !== 'PGRST116') {
       throw new Error(`Failed to fetch review for deletion: ${fetchError.message}`);
     }
 

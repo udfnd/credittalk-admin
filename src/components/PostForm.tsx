@@ -5,8 +5,8 @@ import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUpload from './ImageUpload';
+import { v4 as uuidv4 } from 'uuid';
 
-// [수정됨] 타입에 link_url 추가
 interface PostData {
   id?: number;
   title: string;
@@ -16,7 +16,6 @@ interface PostData {
   image_urls?: string[];
 }
 
-// [수정됨] FormInputs 타입에 link_url 추가
 type FormInputs = Omit<PostData, 'image_urls'> & {
   imageFile_0?: FileList;
   imageFile_1?: FileList;
@@ -38,31 +37,78 @@ export default function PostForm({ initialData }: PostFormProps) {
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
-    const formData = new FormData();
-    formData.append('title', data.title);
-    formData.append('content', data.content);
-    formData.append('category', data.category);
-
-    let linkUrl = data.link_url || '';
-    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-      linkUrl = 'https://' + linkUrl;
-    }
-    formData.append('link_url', linkUrl);
-
-    for (let i = 0; i < 3; i++) {
-      const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-      if (fileList && fileList.length > 0) {
-        formData.append('imageFile', fileList[0]);
-      }
-    }
-
-    const url = isEditMode ? `/api/admin/posts/${initialData?.id}` : '/api/admin/posts';
-    const method = isEditMode ? 'PUT' : 'POST';
 
     try {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < 3; i++) {
+        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
+        if (fileList && fileList.length > 0) {
+          imageFiles.push(fileList[0]);
+        }
+      }
+
+      let uploadedImageUrls: string[] = initialData?.image_urls || [];
+
+      if (imageFiles.length > 0) {
+        const BUCKET_NAME = 'post-images';
+        const newImageUrls: string[] = [];
+
+        for (const file of imageFiles) {
+          const fileExtension = file.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExtension}`;
+          const filePath = `community-posts/${fileName}`; // 커뮤니티 게시글용 폴더 지정
+
+          // 1. 공통 API를 통해 Presigned URL 요청
+          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: filePath }),
+          });
+
+          if (!presignedUrlResponse.ok) {
+            const error = await presignedUrlResponse.json();
+            throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+          }
+          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+          // 2. Presigned URL로 파일 직접 업로드
+          const uploadResponse = await fetch(presignedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+
+          if (!uploadResponse.ok) {
+            throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
+          }
+
+          newImageUrls.push(publicUrl);
+        }
+        uploadedImageUrls = newImageUrls;
+      }
+
+      let linkUrl = data.link_url || '';
+      if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+        linkUrl = 'https://' + linkUrl;
+      }
+
+      // 3. 최종 데이터를 JSON으로 서버에 전송
+      const payload = {
+        title: data.title,
+        content: data.content,
+        category: data.category,
+        link_url: linkUrl,
+        image_urls: uploadedImageUrls,
+      };
+
+      const url = isEditMode ? `/api/admin/posts/${initialData?.id}` : '/api/admin/posts';
+      // 수정(PUT)과 생성(POST)을 구분
+      const method = isEditMode ? 'PUT' : 'POST';
+
       const response = await fetch(url, {
         method: method,
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -71,7 +117,6 @@ export default function PostForm({ initialData }: PostFormProps) {
       }
 
       setMessage({ type: 'success', text: `게시글이 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
-
       if (!isEditMode) reset();
 
       router.refresh();

@@ -4,7 +4,8 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
+import ImageUpload from './ImageUpload';
+import { v4 as uuidv4 } from 'uuid'; // 파일명 생성을 위해 uuid 임포트
 
 type Notice = {
   id?: number;
@@ -17,7 +18,6 @@ type Notice = {
   is_published: boolean;
 };
 
-// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
 type FormInputs = Omit<Notice, 'image_urls'> & {
   imageFile_0?: FileList;
   imageFile_1?: FileList;
@@ -30,62 +30,81 @@ interface NoticeFormProps {
 
 export default function NoticeForm({ initialData }: NoticeFormProps) {
   const router = useRouter();
-
-  const getSanitizedInitialValues = () => {
-    if (!initialData) {
-      return {
-        is_published: true,
-        author_name: '관리자',
-      };
-    }
-    const { ...formDefaults } = initialData;
-    return formDefaults;
-  };
-
-  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
-    defaultValues: getSanitizedInitialValues(),
+    defaultValues: initialData || {
+      is_published: true,
+      author_name: '관리자',
+    },
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   const isEditMode = !!initialData;
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
-    const formData = new FormData();
-
-    formData.append('title', data.title);
-    formData.append('content', data.content);
-    formData.append('author_name', data.author_name || '관리자');
-    formData.append('is_published', String(data.is_published));
-    formData.append('category', data.category || '');
-
-    let linkUrl = data.link_url || '';
-    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-      linkUrl = 'https://' + linkUrl;
-    }
-    formData.append('link_url', linkUrl);
-
-    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
-    let fileAttached = false;
-    for (let i = 0; i < 3; i++) {
-      const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-      if (fileList && fileList.length > 0) {
-        formData.append('imageFile', fileList[0]);
-        fileAttached = true;
-      }
-    }
-
-    if (!isEditMode && !fileAttached) {
-      setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
-      return;
-    }
-
-    const url = isEditMode ? `/api/admin/notices/${initialData?.id}` : '/api/admin/notices';
-    const method = 'POST';
 
     try {
-      const response = await fetch(url, { method, body: formData });
+      const imageFiles: File[] = [];
+      for (let i = 0; i < 3; i++) {
+        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
+        if (fileList && fileList.length > 0) {
+          imageFiles.push(fileList[0]);
+        }
+      }
+
+      let uploadedImageUrls: string[] = initialData?.image_urls || [];
+
+      // 새 이미지가 있으면 Presigned URL 방식으로 업로드
+      if (imageFiles.length > 0) {
+        const BUCKET_NAME = 'notice-images';
+        const newImageUrls: string[] = [];
+
+        for (const file of imageFiles) {
+          const fileExtension = file.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExtension}`;
+          const filePath = `${fileName}`; // 버킷 내 경로
+
+          // 1. Presigned URL 요청 (공통 API 사용)
+          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: filePath }),
+          });
+          if (!presignedUrlResponse.ok) throw new Error('Presigned URL 생성 실패');
+          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+          // 2. Presigned URL로 파일 직접 업로드
+          const uploadResponse = await fetch(presignedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+          if (!uploadResponse.ok) throw new Error('스토리지 업로드 실패');
+
+          newImageUrls.push(publicUrl);
+        }
+        uploadedImageUrls = newImageUrls; // 새 이미지 URL로 교체
+      }
+
+      // 3. 최종 데이터를 JSON으로 서버에 전송
+      const payload = {
+        title: data.title,
+        content: data.content,
+        author_name: data.author_name || '관리자',
+        is_published: data.is_published,
+        category: data.category || '',
+        link_url: data.link_url && !/^https?:\/\//i.test(data.link_url) ? `https://${data.link_url}` : data.link_url || null,
+        image_urls: uploadedImageUrls
+      };
+
+      const url = isEditMode ? `/api/admin/notices/${initialData?.id}` : '/api/admin/notices';
+      // 수정은 POST, 생성도 POST로 통일하여 API 단순화 (NoticeForm과 동일한 패턴)
+      const method = 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -93,15 +112,10 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
       }
 
       setMessage({ type: 'success', text: `공지사항이 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
-
-      if (!isEditMode) {
-        reset();
-      }
+      if (!isEditMode) reset();
 
       router.refresh();
-      if (isEditMode) {
-        setTimeout(() => router.push('/admin/notices'), 1500);
-      }
+      setTimeout(() => router.push('/admin/notices'), 1500);
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';

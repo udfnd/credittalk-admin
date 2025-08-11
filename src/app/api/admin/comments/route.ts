@@ -12,6 +12,11 @@ const TABLE_MAP: { [key: string]: string } = {
   'incident-photos': 'incident_photos',
   'new-crime-cases': 'new_crime_cases',
   'posts': 'community_posts',
+  'arrest_news': 'arrest_news',
+  'incident_photos': 'incident_photos',
+  'new_crime_cases': 'new_crime_cases',
+  'community_posts': 'community_posts',
+  'help_questions': 'help_questions',
 };
 
 async function isRequestFromAdmin(supabase: ReturnType<typeof createClient>): Promise<boolean> {

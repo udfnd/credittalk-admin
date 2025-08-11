@@ -69,11 +69,6 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
       }
     }
 
-    if (!isEditMode && !fileAttached) {
-      setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
-      return;
-    }
-
     const url = isEditMode ? `/api/admin/new-crime-cases/${initialData?.id}` : '/api/admin/new-crime-cases';
     const method = 'POST';
 

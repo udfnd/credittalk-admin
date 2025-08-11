@@ -3,7 +3,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
-import { v4 as uuidv4 } from 'uuid';
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -19,7 +18,6 @@ async function isAdmin(): Promise<boolean> {
   return data === true;
 }
 
-// 모든 검거소식 조회
 export async function GET() {
   if (!(await isAdmin())) {
     return new NextResponse('Unauthorized', { status: 401 });
@@ -46,46 +44,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const formData = await request.formData();
-    const title = formData.get('title') as string;
-    const content = formData.get('content') as string | null;
-    const author_name = formData.get('author_name') as string | null;
-    const is_published = formData.get('is_published') === 'true';
-    const imageFiles = formData.getAll('imageFile') as File[]; // getAll로 변경
-    const link_url = formData.get('link_url') as string | null;
+    const { title, content, author_name, is_published, image_urls, link_url } = await request.json();
 
     if (!title) {
       return new NextResponse('Title is required', { status: 400 });
-    }
-
-    const imageUrls: string[] = []; // URL을 담을 배열
-
-    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
-      const BUCKET_NAME = 'arrest-news-images';
-      for (const imageFile of imageFiles) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin
-          .storage
-          .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
-
-        if (uploadError) throw new Error(`Storage Error: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
-        if (publicUrl) imageUrls.push(publicUrl);
-      }
     }
 
     const { data, error } = await supabaseAdmin
       .from('arrest_news')
       .insert({
         title,
-        content,
+        content: content || null,
         author_name: author_name || '관리자',
         is_published,
-        image_urls: imageUrls.length > 0 ? imageUrls : null, // 배열 저장
+        image_urls: image_urls && image_urls.length > 0 ? image_urls : null,
         link_url,
       })
       .select()

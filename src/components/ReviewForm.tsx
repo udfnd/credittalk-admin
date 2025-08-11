@@ -4,9 +4,9 @@
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ImageUpload from './ImageUpload'; // [수정됨] ImageUpload 컴포넌트를 임포트합니다.
+import ImageUpload from './ImageUpload';
+import { v4 as uuidv4 } from 'uuid';
 
-// initialData를 위한 타입 정의 추가
 interface ReviewData {
   id?: number;
   title: string;
@@ -16,7 +16,6 @@ interface ReviewData {
   image_urls?: string[];
 }
 
-// [수정됨] FormInputs 타입을 개별 이미지 파일 필드에 맞게 수정합니다.
 type ReviewInputs = {
   title: string;
   content: string;
@@ -28,12 +27,11 @@ type ReviewInputs = {
 };
 
 interface ReviewFormProps {
-  initialData?: ReviewData; // 수정 모드를 위한 initialData prop
+  initialData?: ReviewData;
 }
 
 export default function ReviewForm({ initialData }: ReviewFormProps) {
   const router = useRouter();
-  // [수정됨] useForm에서 watch와 setValue를 추가로 가져옵니다.
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ReviewInputs>({
     defaultValues: initialData || {
       is_published: true,
@@ -41,32 +39,75 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
     }
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   const isEditMode = !!initialData;
 
   const onSubmit: SubmitHandler<ReviewInputs> = async (data) => {
     setMessage(null);
-    const formData = new FormData();
-    formData.append('title', data.title);
-    formData.append('content', data.content);
-    formData.append('rating', String(data.rating));
-    formData.append('is_published', String(data.is_published));
-
-    // [수정됨] 개별 파일 필드에서 파일을 수집하여 FormData에 추가합니다.
-    for (let i = 0; i < 3; i++) {
-      const fileList = data[`imageFile_${i}` as keyof ReviewInputs] as FileList | undefined;
-      if (fileList && fileList.length > 0) {
-        formData.append('imageFile', fileList[0]);
-      }
-    }
-
-    const url = isEditMode ? `/api/admin/reviews/${initialData?.id}` : '/api/admin/reviews';
-    const method = isEditMode ? 'PUT' : 'POST';
 
     try {
+      const imageFiles: File[] = [];
+      for (let i = 0; i < 3; i++) {
+        const fileList = data[`imageFile_${i}` as keyof ReviewInputs] as FileList | undefined;
+        if (fileList && fileList.length > 0) {
+          imageFiles.push(fileList[0]);
+        }
+      }
+
+      let uploadedImageUrls: string[] = initialData?.image_urls || [];
+
+      if (imageFiles.length > 0) {
+        const BUCKET_NAME = 'reviews-images';
+        const newImageUrls: string[] = [];
+
+        for (const file of imageFiles) {
+          const fileExtension = file.name.split('.').pop();
+          const fileName = `${uuidv4()}.${fileExtension}`;
+
+          // 1. 공통 API를 통해 Presigned URL 요청
+          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: fileName }),
+          });
+
+          if (!presignedUrlResponse.ok) {
+            const error = await presignedUrlResponse.json();
+            throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+          }
+          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+          // 2. Presigned URL로 파일 직접 업로드
+          const uploadResponse = await fetch(presignedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+
+          if (!uploadResponse.ok) {
+            throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
+          }
+
+          newImageUrls.push(publicUrl);
+        }
+        uploadedImageUrls = newImageUrls;
+      }
+
+      // 3. 최종 데이터를 JSON으로 서버에 전송
+      const payload = {
+        title: data.title,
+        content: data.content,
+        rating: data.rating,
+        is_published: data.is_published,
+        image_urls: uploadedImageUrls,
+      };
+
+      const url = isEditMode ? `/api/admin/reviews/${initialData?.id}` : '/api/admin/reviews';
+      const method = isEditMode ? 'PUT' : 'POST';
+
       const response = await fetch(url, {
         method: method,
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -75,7 +116,6 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
       }
 
       setMessage({ type: 'success', text: `후기가 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
-
       if (!isEditMode) reset();
 
       router.refresh();
@@ -116,7 +156,6 @@ export default function ReviewForm({ initialData }: ReviewFormProps) {
         {errors.content && <p className="mt-1 text-sm text-red-600">{errors.content.message}</p>}
       </div>
 
-      {/* [수정됨] 기존 input을 ImageUpload 컴포넌트로 교체합니다. */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           이미지 (최대 3장) {isEditMode && '(변경할 경우에만 업로드)'}

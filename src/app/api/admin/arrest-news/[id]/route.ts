@@ -3,7 +3,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -15,33 +14,14 @@ async function isAdmin(): Promise<boolean> {
   return isAdmin === true;
 }
 
-type ArrestNewsUpdate = {
+// 'any' 대신 사용할 명확한 타입 정의
+interface ArrestNewsUpdatePayload {
   title: string;
   content: string | null;
   author_name: string | null;
   is_published: boolean;
   link_url?: string | null;
-  image_urls?: string[] | null; // image_url -> image_urls
-};
-
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-
-  if (!(await isAdmin())) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('arrest_news')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) return new NextResponse(error.message, { status: 404 });
-  return NextResponse.json(data);
+  image_urls?: string[];
 }
 
 export async function POST(
@@ -55,20 +35,19 @@ export async function POST(
   }
 
   try {
-    const formData = await request.formData();
-    const updates: ArrestNewsUpdate = {
-      title: formData.get('title') as string,
-      content: formData.get('content') as string | null,
-      author_name: formData.get('author_name') as string | null,
-      is_published: formData.get('is_published') === 'true',
-      link_url: formData.get('link_url') as string | null,
+    const { title, content, author_name, is_published, link_url, image_urls } = await request.json();
+
+    const updates: Partial<ArrestNewsUpdatePayload> = {
+      title,
+      content,
+      author_name,
+      is_published,
+      link_url,
     };
 
-    const imageFiles = formData.getAll('imageFile') as File[]; // getAll로 변경
     const BUCKET_NAME = 'arrest-news-images';
 
-    if (imageFiles.length > 0 && imageFiles[0].size > 0) {
-      // 기존 이미지 삭제 로직 추가
+    if (image_urls && Array.isArray(image_urls)) {
       const { data: currentNews } = await supabaseAdmin.from('arrest_news').select('image_urls').eq('id', id).single();
       if (currentNews?.image_urls && currentNews.image_urls.length > 0) {
         const oldImageNames = currentNews.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
@@ -76,22 +55,7 @@ export async function POST(
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
         }
       }
-
-      const newImageUrls: string[] = [];
-      for (const imageFile of imageFiles) {
-        const fileExtension = imageFile.name.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExtension}`;
-
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(fileName, imageFile);
-
-        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
-
-        const { data: { publicUrl } } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path);
-        if (publicUrl) newImageUrls.push(publicUrl);
-      }
-      updates.image_urls = newImageUrls;
+      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
