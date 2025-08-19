@@ -13,6 +13,7 @@ interface Notice {
   author_name: string;
   is_published: boolean;
   is_pinned: boolean;
+  views: number;
 }
 
 export default function ManageNoticesPage() {
@@ -89,6 +90,7 @@ export default function ManageNoticesPage() {
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">조회수</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
           </tr>
@@ -108,6 +110,7 @@ export default function ManageNoticesPage() {
                     : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">숨김</span>
                   }
                 </td>
+                <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.views}</td>
                 <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.created_at).toLocaleDateString()}</td>
                 <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
                   <button onClick={() => setOpenCommentFormId(openCommentFormId === item.id ? null : item.id)} className="text-green-600 hover:text-green-900">
@@ -122,7 +125,7 @@ export default function ManageNoticesPage() {
               </tr>
               {openCommentFormId === item.id && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <CommentForm
                       postId={item.id}
                       boardType="notices"

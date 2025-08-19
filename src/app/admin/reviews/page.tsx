@@ -14,6 +14,7 @@ interface Review {
   author_name: string;
   is_published: boolean;
   is_pinned: boolean;
+  views: number;
 }
 
 export default function ManageReviewsPage() {
@@ -87,6 +88,7 @@ export default function ManageReviewsPage() {
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">평점</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">조회수</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
           </tr>
@@ -107,6 +109,7 @@ export default function ManageReviewsPage() {
                     : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">숨김</span>
                   }
                 </td>
+                <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{review.views}</td>
                 <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(review.created_at).toLocaleDateString()}</td>
                 <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
                   <button onClick={() => setOpenCommentFormId(openCommentFormId === review.id ? null : review.id)} className="text-green-600 hover:text-green-900">
@@ -121,7 +124,7 @@ export default function ManageReviewsPage() {
               </tr>
               {openCommentFormId === review.id && (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <CommentForm
                       postId={review.id}
                       boardType="reviews"
