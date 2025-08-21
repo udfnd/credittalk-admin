@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface ReportSummary {
@@ -30,52 +30,79 @@ export default function ReportListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 페이지네이션 상태
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const fetchReports = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error: fetchError, count } = await supabase
+      .from('admin_scammer_reports_view')
+      .select('*', { count: 'exact' })
+      .eq('attempted_fraud', false) // 서버 쿼리 단계에서 필터
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (fetchError) {
+      console.error('Error fetching reports:', fetchError);
+      setError(fetchError.message);
+      setReports([]);
+      setTotalCount(0);
+    } else {
+      setReports((data || []) as ReportSummary[]);
+      setTotalCount(count ?? 0);
+    }
+
+    setIsLoading(false);
+  }, [supabase, page, pageSize]);
+
   useEffect(() => {
-    const fetchReports = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      const { data, error: fetchError } = await supabase
-        .from('admin_scammer_reports_view')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        console.error("Error fetching reports:", fetchError);
-        setError(fetchError.message);
-        setReports([]);
-      } else if (data) {
-        setReports(data as ReportSummary[]);
-      }
-      setIsLoading(false);
-    };
     fetchReports();
-  }, [supabase]);
+  }, [fetchReports]);
 
-  // [신규] 삭제 처리 핸들러 함수
+  // 삭제 후 현재 페이지 데이터 갱신 (마지막 항목 삭제로 페이지가 비면 한 페이지 당겨줌)
   const handleDelete = async (reportId: number) => {
-    if (window.confirm(`정말로 이 신고(ID: ${reportId})를 삭제하시겠습니까? 연관된 증거 파일도 함께 삭제되며, 이 작업은 되돌릴 수 없습니다.`)) {
+    if (
+      window.confirm(
+        `정말로 이 신고(ID: ${reportId})를 삭제하시겠습니까? 연관된 증거 파일도 함께 삭제되며, 이 작업은 되돌릴 수 없습니다.`
+      )
+    ) {
       try {
         const response = await fetch(`/api/admin/reports/${reportId}`, {
           method: 'DELETE',
         });
 
         if (!response.ok) {
-          throw new Error(await response.text() || '신고 삭제에 실패했습니다.');
+          throw new Error((await response.text()) || '신고 삭제에 실패했습니다.');
         }
 
-        // UI에서 즉시 해당 항목 제거
-        setReports(prevReports => prevReports.filter(r => r.id !== reportId));
-        alert('신고가 성공적으로 삭제되었습니다.');
+        // 낙관적 업데이트
+        setReports(prev => prev.filter(r => r.id !== reportId));
+        setTotalCount(prev => Math.max(0, prev - 1));
 
+        // 현재 페이지가 비었으면 한 페이지 앞으로 이동
+        setTimeout(() => {
+          setPage(prev => {
+            const remaining = totalCount - 1; // 방금 삭제 반영
+            const newTotalPages = Math.max(1, Math.ceil(remaining / pageSize));
+            return Math.min(prev, newTotalPages);
+          });
+        }, 0);
+
+        alert('신고가 성공적으로 삭제되었습니다.');
       } catch (err) {
         alert(`오류: ${err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.'}`);
       }
     }
   };
-
-  if (isLoading) return <p className="text-center py-8">신고 목록을 불러오는 중...</p>;
-  if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
 
   const renderArray = (items: string[] | undefined | null) => {
     if (!items || items.length === 0) return 'N/A';
@@ -95,44 +122,74 @@ export default function ReportListPage() {
     <div className="container mx-auto p-0 md:p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900">사기 신고 관리</h1>
+        <div className="flex items-center gap-2">
+          <label htmlFor="pageSize" className="text-sm text-gray-600">
+            페이지 크기
+          </label>
+          <select
+            id="pageSize"
+            className="border rounded px-2 py-1 text-sm"
+            value={pageSize}
+            onChange={(e) => {
+              setPage(1); // 페이지 크기 변경 시 첫 페이지로
+              setPageSize(Number(e.target.value));
+            }}
+          >
+            {[10, 20, 50, 100].map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
       </div>
-      {reports.length === 0 ? (
+
+      {isLoading ? (
+        <p className="text-center py-8">신고 목록을 불러오는 중...</p>
+      ) : error ? (
+        <p className="text-center text-red-500 py-8">오류: {error}</p>
+      ) : reports.length === 0 ? (
         <p>등록된 신고가 없습니다.</p>
       ) : (
-        <div className="bg-white shadow-md rounded-lg overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">신고일</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">신고자(닉네임)</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">카테고리</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">피해 금액</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">가해자 연락처</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">가해자 계좌 정보</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분석결과</th>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
-            </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-            {reports
-              .filter(report => !report.attempted_fraud)
-              .map(report => (
+        <>
+          <div className="bg-white shadow-md rounded-lg overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">신고일</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">신고자(닉네임)</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">카테고리</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">피해 금액</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">가해자 연락처</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">가해자 계좌 정보</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분석결과</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
+              </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+              {reports.map(report => (
                 <tr key={report.id}>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(report.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">{report.nickname || 'N/A'}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(report.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                    <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
+                      {report.nickname || 'N/A'}
+                    </Link>
+                  </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.category}</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'}
+                  </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderArray(report.phone_numbers)}</td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderAccounts(report.damage_accounts)}</td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm">
                     {report.analysis_result ? (
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        {report.analysis_result}
-                      </span>
+                          {report.analysis_result}
+                        </span>
                     ) : (
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                        미분석
-                      </span>
+                          미분석
+                        </span>
                     )}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm font-medium space-x-4">
@@ -145,9 +202,51 @@ export default function ReportListPage() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 페이지네이션 바 */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3 mt-4">
+            <div className="text-sm text-gray-600">
+              전체 <b>{totalCount.toLocaleString()}</b>건 · 페이지 <b>{page}</b>/<b>{totalPages}</b>
+            </div>
+
+            <div className="inline-flex rounded-md shadow-sm border border-gray-300 overflow-hidden">
+              <button
+                className="px-3 py-2 text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage(1)}
+                disabled={page === 1}
+              >
+                « 처음
+              </button>
+              <button
+                className="px-3 py-2 text-sm bg-white hover:bg-gray-50 border-l border-gray-300 disabled:opacity-50"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                ‹ 이전
+              </button>
+              <span className="px-4 py-2 text-sm bg-gray-50 border-l border-gray-300">
+                {page} / {totalPages}
+              </span>
+              <button
+                className="px-3 py-2 text-sm bg-white hover:bg-gray-50 border-l border-gray-300 disabled:opacity-50"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                다음 ›
+              </button>
+              <button
+                className="px-3 py-2 text-sm bg-white hover:bg-gray-50 border-l border-gray-300 disabled:opacity-50"
+                onClick={() => setPage(totalPages)}
+                disabled={page === totalPages}
+              >
+                마지막 »
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
