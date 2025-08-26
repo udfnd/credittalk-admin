@@ -5,77 +5,96 @@ import { useEffect, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
+type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
+
+type JobData = {
+  screen?: string;
+  params?: string; // 서버에서 문자열(JSON string)로 보관 중이라면 string 유지
+} | null;
+
+type AudienceAll = { all: true };
+type Audience = AudienceAll | Record<string, unknown>;
+
+type JobResult = {
+  sent: number;
+  total: number;
+  failed: number;
+  dry_run: boolean;
+  disabled_tokens: number;
+} | null;
+
 type PushJob = {
   id: number;
   created_at: string;
   created_by: string | null;
   title: string;
   body: string;
-  data: { screen?: string; params?: string } | null;
-  audience: any | null;
+  data: JobData;
+  audience: Audience | null;
   target_user_ids: string[] | null;
   dry_run: boolean;
   scheduled_at: string | null;
-  status: 'queued' | 'processing' | 'done' | 'failed';
-  result: any | null;
+  status: JobStatus;
+  result: JobResult;
 };
+
+type EnqueueOk = { ok: true; job: PushJob };
+
+function isAudienceAll(aud: Audience | null | undefined): aud is AudienceAll {
+  return !!aud && typeof aud === 'object' && 'all' in aud && (aud as Record<string, unknown>).all === true;
+}
 
 export default function PushComposerPage() {
   const supabase = createClientComponentClient();
 
   // form state
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [screen, setScreen] = useState('');        // (선택) 딥링크 screen
-  const [params, setParams] = useState('');        // (선택) JSON 문자열: {"id":123}
-  const [userIdsCsv, setUserIdsCsv] = useState(''); // (선택) uuid CSV
-  const [scheduledAt, setScheduledAt] = useState<string>(''); // (표시는 하지만 즉시 발송이라 서버에서 무시)
+  const [title, setTitle] = useState<string>('');
+  const [body, setBody] = useState<string>('');
+  const [scheduledAt, setScheduledAt] = useState<string>(''); // 표시용(현재 즉시 발송)
 
   // ui state
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<EnqueueOk | null>(null);
 
   // jobs list
   const [jobs, setJobs] = useState<PushJob[]>([]);
-  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [loadingJobs, setLoadingJobs] = useState<boolean>(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
 
-  const fetchJobs = async () => {
+  const fetchJobs = async (): Promise<void> => {
     setLoadingJobs(true);
     setJobsError(null);
+
     const { data, error } = await supabase
       .from('push_jobs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(30);
 
-    if (error) setJobsError(error.message);
-    else setJobs((data as PushJob[]) ?? []);
+    if (error) {
+      setJobsError(error.message);
+    } else {
+      setJobs((data as PushJob[]) ?? []);
+    }
     setLoadingJobs(false);
   };
 
   useEffect(() => {
     fetchJobs();
-  }, [supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const submit = async () => {
+  const submit = async (): Promise<void> => {
     try {
       setSubmitting(true);
       setError(null);
       setResult(null);
 
-      const targetUserIds = userIdsCsv
-        ? userIdsCsv.split(',').map(s => s.trim()).filter(Boolean)
-        : null;
-
-      const payload = {
+      // 현재는 전체 즉시 발송만 지원
+      const payload: { title: string; body: string } = {
         title,
         body,
-        data: screen ? { screen, ...(params ? { params } : {}) } : null,
-        audience: targetUserIds ? null : { all: true },
-        targetUserIds,
-        // 즉시 발송이므로 서버에서 dryRun/scheduledAt은 무시
       };
 
       const res = await fetch('/api/push/enqueue', {
@@ -85,13 +104,17 @@ export default function PushComposerPage() {
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      const json: EnqueueOk = await res.json();
+      if (!res.ok) {
+        // 서버가 에러 메시지를 텍스트로 줄 수도 있으므로 보수적으로 처리
+        throw new Error((json as unknown as { error?: string })?.error ?? `HTTP ${res.status}`);
+      }
 
       setResult(json);
       fetchJobs();
-    } catch (e: any) {
-      setError(e?.message ?? 'unknown error');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -141,36 +164,7 @@ export default function PushComposerPage() {
             />
           </div>
 
-          {/* 필요 시 딥링크 UI를 주석 해제하세요 */}
-          {/* <div>
-            <label className="block text-sm font-medium mb-1">딥링크 screen (선택)</label>
-            <input
-              className="border rounded px-3 py-2 w-full"
-              placeholder="예) NoticeList, HelpDeskDetail 등"
-              value={screen}
-              onChange={e => setScreen(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">딥링크 params (JSON 문자열, 선택)</label>
-            <input
-              className="border rounded px-3 py-2 w-full"
-              placeholder='예) {"id":123}'
-              value={params}
-              onChange={e => setParams(e.target.value)}
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium mb-1">특정 user_id CSV (없으면 전체 발송)</label>
-            <input
-              className="border rounded px-3 py-2 w-full"
-              placeholder="uuid1, uuid2, uuid3"
-              value={userIdsCsv}
-              onChange={e => setUserIdsCsv(e.target.value)}
-            />
-          </div> */}
+          {/* 필요 시 딥링크/타게팅 UI를 여기에 추가 */}
         </div>
 
         <div className="mt-6">
@@ -228,19 +222,22 @@ export default function PushComposerPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                     {job.target_user_ids?.length
                       ? `${job.target_user_ids.length}명`
-                      : (job.audience?.all ? '전체' : '조건')}
+                      : (isAudienceAll(job.audience) ? '전체' : '조건')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                     {job.scheduled_at ? new Date(job.scheduled_at).toLocaleString() : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={[
-                        'px-2 py-0.5 rounded text-xs',
-                        job.status === 'queued' && 'bg-yellow-100 text-yellow-800',
-                        job.status === 'processing' && 'bg-blue-100 text-blue-800',
-                        job.status === 'done' && 'bg-green-100 text-green-800',
-                        job.status === 'failed' && 'bg-red-100 text-red-800',
-                      ].filter(Boolean).join(' ')}
+                      <span
+                        className={[
+                          'px-2 py-0.5 rounded text-xs',
+                          job.status === 'queued' && 'bg-yellow-100 text-yellow-800',
+                          job.status === 'processing' && 'bg-blue-100 text-blue-800',
+                          job.status === 'done' && 'bg-green-100 text-green-800',
+                          job.status === 'failed' && 'bg-red-100 text-red-800',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                       >
                         {job.status}
                       </span>
@@ -255,7 +252,11 @@ export default function PushComposerPage() {
               </Fragment>
             ))}
             {!jobs.length && (
-              <tr><td className="px-6 py-8 text-center text-gray-500" colSpan={7}>아직 등록된 작업이 없습니다.</td></tr>
+              <tr>
+                <td className="px-6 py-8 text-center text-gray-500" colSpan={7}>
+                  아직 등록된 작업이 없습니다.
+                </td>
+              </tr>
             )}
             </tbody>
           </table>
