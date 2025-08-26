@@ -3,15 +3,69 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { GoogleAuth } from 'google-auth-library';
+import { GoogleAuth, type AuthClient } from 'google-auth-library';
 
 export const runtime = 'nodejs';
 const ANDROID_CHANNEL_ID = 'push_default_v2';
+const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
+type Uuid = string;
 
-// ──────────────────────────────────────────────────────────────
-// 인증(관리자 확인)
-// ──────────────────────────────────────────────────────────────
+interface ServiceAccountCredentials {
+  type: 'service_account';
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+  universe_domain?: string;
+}
+
+interface DeviceTokenRow {
+  token: string;
+  platform?: string | null;
+}
+
+interface PushJobRow {
+  id: number;
+  created_by: Uuid | null;
+  created_at: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  audience: Record<string, unknown> | null;
+  target_user_ids: Uuid[] | number[] | null;
+  dry_run: boolean;
+  scheduled_at: string | null;
+  status: 'queued' | 'processing' | 'done' | 'failed';
+  result: Record<string, unknown> | null;
+}
+
+interface EnqueueRequestBody {
+  title: string;
+  body: string;
+  data?: Record<string, unknown> | null;
+  audience?: Record<string, unknown> | null;
+  targetUserIds?: Array<Uuid | number>;
+}
+
+interface FcmErrorShape {
+  response?: {
+    status?: number;
+    data?: {
+      error?: {
+        status?: string;
+        message?: string;
+      };
+    };
+  };
+  message?: string;
+}
+
 async function isAdmin() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -23,29 +77,18 @@ async function isAdmin() {
   return { ok: true as const, user };
 }
 
-// ──────────────────────────────────────────────────────────────
-// FCM v1 클라이언트
-// ──────────────────────────────────────────────────────────────
-function loadServiceAccount(): any {
+function loadServiceAccount(): ServiceAccountCredentials {
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
   if (b64) {
-    try {
-      const json = Buffer.from(b64, 'base64').toString('utf8');
-      return JSON.parse(json);
-    } catch (e:any) {
-      throw new Error(`Invalid GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${e?.message || e}`);
-    }
+    const json = Buffer.from(b64, 'base64').toString('utf8');
+    return JSON.parse(json) as ServiceAccountCredentials;
   }
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64');
-  try { return JSON.parse(raw); } catch (e:any) {
-    throw new Error(`Invalid GOOGLE_SERVICE_ACCOUNT_JSON: ${e?.message || e}`);
-  }
+  return JSON.parse(raw) as ServiceAccountCredentials;
 }
 
-const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
-
-async function getFcmHttpClient() {
+async function getFcmHttpClient(): Promise<{ client: AuthClient; url: string }> {
   const creds = loadServiceAccount();
   const auth = new GoogleAuth({ credentials: creds, scopes: [FCM_SCOPE] });
   const client = await auth.getClient();
@@ -55,8 +98,8 @@ async function getFcmHttpClient() {
   return { client, url };
 }
 
-// 데이터 페이로드는 모두 문자열이어야 함 (FCM 제약)
-function normalizeDataPayload(data: any | null | undefined) {
+// FCM data는 모두 문자열이어야 함
+function normalizeDataPayload(data?: Record<string, unknown> | null): Record<string, string> {
   if (!data || typeof data !== 'object') return {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(data)) {
@@ -65,16 +108,19 @@ function normalizeDataPayload(data: any | null | undefined) {
   return out;
 }
 
-// 단일 토큰 전송 (HTTP v1)
+type SendResult =
+  | { ok: true; id?: string }
+  | { ok: false; status?: number; code?: string; msg?: string; unregistered?: boolean };
+
 async function sendToTokenV1(
-  client: any,
+  client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, any> | null }
-) {
+  payload: { title: string; body: string; data?: Record<string, unknown> | null }
+): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
   try {
-    const res = await client.request({
+    const res = await client.request<{ name?: string }>({
       url,
       method: 'POST',
       data: {
@@ -84,30 +130,22 @@ async function sendToTokenV1(
           data,
           android: {
             priority: 'HIGH',
-            // (선택) 오래 오프라인일 때 큐 보존 시간
-            // ttl: '3600s',
-            notification: {
-              // ⬇️ 여기만 'default' → 'push_default_v2'
-              channel_id: ANDROID_CHANNEL_ID,
-            },
+            notification: { channel_id: ANDROID_CHANNEL_ID },
           },
-          // apns(ios) 필요 시 추가 가능
         },
       },
     });
-    return { ok: true as const, id: res.data?.name };
-  } catch (e: any) {
-    const status = e?.response?.status;
-    const code = e?.response?.data?.error?.status;
-    const msg = e?.response?.data?.error?.message || e?.message || String(e);
-    const unreg = /UNREGISTERED|NOT_FOUND|INVALID_ARGUMENT/i.test(code || msg) || status === 404;
-    return { ok: false as const, status, code, msg, unregistered: unreg };
+    return { ok: true, id: res.data?.name };
+  } catch (e: unknown) {
+    const err = e as FcmErrorShape;
+    const status = err.response?.status;
+    const code = err.response?.data?.error?.status;
+    const msg = err.response?.data?.error?.message || err.message || String(e);
+    const unreg = /UNREGISTERED|NOT_FOUND|INVALID_ARGUMENT/i.test(code ?? '') || status === 404;
+    return { ok: false, status, code, msg, unregistered: unreg };
   }
 }
 
-// ──────────────────────────────────────────────────────────────
-// 메인 핸들러: 즉시 발송
-// ──────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   // 1) 관리자 인증
   const auth = await isAdmin();
@@ -115,37 +153,37 @@ export async function POST(request: NextRequest) {
 
   try {
     // 2) 입력 파싱
-    const body = await request.json().catch(() => ({}));
+    const parsed = (await request.json().catch(() => ({}))) as Partial<EnqueueRequestBody>;
     const {
       title,
       body: message,
       data,
       audience,
       targetUserIds,
-    } = body || {};
+    } = parsed;
 
     if (!title || !String(title).trim() || !message || !String(message).trim()) {
       return new NextResponse('title and body are required', { status: 400 });
     }
 
     // 3) 대상 토큰 수집 (enabled = true)
-    let q = supabaseAdmin.from('device_push_tokens')
+    let q = supabaseAdmin
+      .from('device_push_tokens')
       .select('token, platform')
       .eq('enabled', true);
 
-    // 스키마가 BIGINT user_id라면 targetUserIds도 BIGINT 배열이어야 합니다.
     if (Array.isArray(targetUserIds) && targetUserIds.length) {
       q = q.in('user_id', targetUserIds);
     }
-    // audience 조건 추가 가능 (예: 플랫폼/버전 타게팅)
 
     const { data: tokensRows, error: tokensErr } = await q;
     if (tokensErr) throw tokensErr;
 
-    const tokens = Array.from(new Set((tokensRows ?? []).map((r:any) => r.token))).filter(Boolean);
+    const rows = (tokensRows ?? []) as DeviceTokenRow[];
+    const tokens = Array.from(new Set(rows.map((r) => r.token))).filter(Boolean);
 
     // 4) push_jobs 레코드 생성 (processing)
-    const { data: jobRow, error: insErr } = await supabaseAdmin
+    const { data: jobRowRaw, error: insErr } = await supabaseAdmin
       .from('push_jobs')
       .insert({
         created_by: auth.user.id,
@@ -162,28 +200,33 @@ export async function POST(request: NextRequest) {
       .single();
     if (insErr) throw insErr;
 
+    const jobRow = jobRowRaw as PushJobRow;
+
     // 5) HTTP v1 전송
     const { client, url } = await getFcmHttpClient();
 
-    let sent = 0, failed = 0;
+    let sent = 0;
+    let failed = 0;
     const dead: string[] = [];
 
-    // 간단한 동시성 제어(한 번에 100개)
     const BATCH = 100;
     for (let i = 0; i < tokens.length; i += BATCH) {
       const chunk = tokens.slice(i, i + BATCH);
       const results = await Promise.allSettled(
-        chunk.map(t => sendToTokenV1(client, url, t, { title, body: message, data: data ?? null }))
+        chunk.map((t) => sendToTokenV1(client, url, t, { title, body: message, data: data ?? null }))
       );
+
       results.forEach((r, idx) => {
-        if (r.status === 'fulfilled' && r.value.ok) {
-          sent += 1;
+        if (r.status === 'fulfilled') {
+          if (r.value.ok) {
+            sent += 1;
+          } else {
+            failed += 1;
+            if (r.value.unregistered) dead.push(chunk[idx]);
+          }
         } else {
           failed += 1;
-          const unreg =
-            r.status === 'fulfilled' ? r.value.unregistered :
-              /UNREGISTERED|NOT_FOUND|INVALID_ARGUMENT/i.test(String((r as any).reason)) ;
-          if (unreg) dead.push(chunk[idx]);
+          // 실패 이유로 UNREGISTERED 등 판단 어려움 → 일단 dead 처리는 하지 않음
         }
       });
     }
@@ -196,7 +239,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 7) 결과 저장 (done)
-    const { data: updated, error: updErr } = await supabaseAdmin
+    const { data: updatedRaw, error: updErr } = await supabaseAdmin
       .from('push_jobs')
       .update({
         status: 'done',
@@ -213,9 +256,11 @@ export async function POST(request: NextRequest) {
       .single();
     if (updErr) throw updErr;
 
+    const updated = updatedRaw as PushJobRow;
     return NextResponse.json({ ok: true, job: updated });
-  } catch (err: any) {
-    console.error('push/enqueue v1 error:', err?.message || err);
-    return new NextResponse(err?.message ?? 'unknown error', { status: 500 });
+  } catch (err: unknown) {
+    const msg = (err as { message?: string }).message ?? 'unknown error';
+    console.error('push/enqueue v1 error:', msg);
+    return new NextResponse(msg, { status: 500 });
   }
 }
