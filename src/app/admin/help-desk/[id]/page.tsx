@@ -21,6 +21,7 @@ interface Question {
   opponent_phone: string;
   opponent_sns: string;
   case_summary: string;
+  user_id: string;
 }
 
 interface Answer {
@@ -137,6 +138,7 @@ export default function AnswerQuestionPage() {
       <HelpDeskAnswerForm
         questionId={question.id}
         initialContent={answer?.content}
+        targetAuthUserId={question.user_id}
         onSuccess={handleSuccess}
       />
     </div>

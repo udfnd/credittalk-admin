@@ -6,17 +6,15 @@ import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { analysisOptionsData } from '@/lib/analysisOptions';
 
-// 스키마의 모든 상세 정보를 포함하도록 인터페이스 확장
 interface ScammerReport {
   id: number;
   created_at: string;
   category: string;
   description: string | null;
   nickname: string | null;
-  reporter_id: string | null;
+  reporter_id: string | null;       // ✅ 신고자 UUID(auth.users.id)
   reporter_email: string | null;
 
-  // 피해 정보
   damage_amount: number | null;
   no_damage_amount: boolean | null;
   victim_circumstances: string | null;
@@ -24,7 +22,6 @@ interface ScammerReport {
   damage_path: string | null;
   damaged_item: string | null;
 
-  // 피의자 정보
   phone_numbers: string[] | null;
   damage_accounts: {
     bankName: string;
@@ -35,18 +32,15 @@ interface ScammerReport {
   impersonated_phone_number: string | null;
   site_name: string | null;
 
-  // 증거 및 기타 정보
   nickname_evidence_url: string | null;
   traded_item_image_urls: string[] | null;
 
-  // 분석 정보
   analysis_result: string | null;
   analysis_message: string | null;
   analyzed_at: string | null;
   analyzer_id: string | null;
 }
 
-// 정보 섹션을 렌더링하기 위한 헬퍼 컴포넌트
 const InfoSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div className="bg-white shadow-md rounded-lg p-6 mb-6">
     <h2 className="text-xl font-semibold mb-4 border-b pb-2 text-gray-800">{title}</h2>
@@ -56,14 +50,12 @@ const InfoSection = ({ title, children }: { title: string; children: React.React
   </div>
 );
 
-// 개별 정보 항목을 렌더링하기 위한 헬퍼 컴포넌트
 const InfoItem = ({ label, value }: { label: string; value: React.ReactNode | string | null }) => (
   <div>
     <dt className="text-sm font-medium text-gray-500">{label}</dt>
     <dd className="mt-1 text-base text-gray-900 break-words">{value || <span className="text-gray-400">N/A</span>}</dd>
   </div>
 );
-
 
 export default function AnalyzeReportPage() {
   const supabase = createClientComponentClient();
@@ -99,8 +91,10 @@ export default function AnalyzeReportPage() {
       setSelectedAnalysisResult(typedData.analysis_result || '');
 
       if (typedData.analysis_result) {
-        const categoryOptions = analysisOptionsData[typedData.category as keyof typeof analysisOptionsData] || [];
-        const preselectedOption = categoryOptions.find(opt => opt.result === typedData.analysis_result);
+        const categoryOptions =
+          analysisOptionsData[typedData.category as keyof typeof analysisOptionsData] || [];
+        const preselectedOption =
+          categoryOptions.find(opt => opt.result === typedData.analysis_result);
         setAnalysisMessage(typedData.analysis_message || preselectedOption?.message || '');
       } else {
         setAnalysisMessage('');
@@ -113,18 +107,47 @@ export default function AnalyzeReportPage() {
     fetchReportDetails();
   }, [reportId, supabase]);
 
-
   const handleResultChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const resultValue = e.target.value;
     setSelectedAnalysisResult(resultValue);
     if (report?.category) {
-      const optionsForCategory = analysisOptionsData[report.category as keyof typeof analysisOptionsData] || [];
+      const optionsForCategory =
+        analysisOptionsData[report.category as keyof typeof analysisOptionsData] || [];
       const selectedOption = optionsForCategory.find(opt => opt.result === resultValue);
       setAnalysisMessage(selectedOption?.message || '');
     } else {
       setAnalysisMessage('');
     }
   };
+
+  // ✅ 저장 성공 후 푸시 발송
+  async function notifyReporterSafe() {
+    try {
+      // 푸시 타이틀/본문 구성 (본문은 너무 길지 않게 잘라서)
+      const pushTitle = '사기 신고 분석이 완료되었습니다';
+      const preview = (analysisMessage || selectedAnalysisResult || '').toString().trim();
+      const pushBody = preview.length > 120 ? `${preview.slice(0, 117)}…` : preview || '앱에서 결과를 확인해 주세요.';
+
+      // reporter_id( UUID )가 있으면 가장 정확함, 없으면 reportId로 서버에 위임
+      const target = report?.reporter_id
+        ? { authUserId: report.reporter_id }
+        : { reportId: Number(reportId) };
+
+      await fetch('/api/push/notify-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // 관리자 세션 쿠키 포함
+        body: JSON.stringify({
+          title: pushTitle,
+          body: pushBody,
+          data: { screen: 'MyReports' }, // 사용자가 앱에서 확인할 화면
+          target,
+        }),
+      });
+    } catch (e) {
+      console.warn('[push] notify-user failed:', e);
+    }
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -134,21 +157,26 @@ export default function AnalyzeReportPage() {
     }
     setIsSubmitting(true);
     try {
+      // 1) 분석 결과 저장
       const response = await fetch(`/api/admin/reports/${reportId}/analyze`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // ✅ 세션 포함(중요)
         body: JSON.stringify({
           analysis_result: selectedAnalysisResult,
           analysis_message: analysisMessage,
         }),
       });
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to update analysis.');
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || 'Failed to update analysis.');
       }
+
+      // 2) 저장 성공 → 작성자 1명에게만 푸시
+      await notifyReporterSafe();
+
       alert('분석 결과가 성공적으로 저장되었습니다.');
-      // 최신 정보로 페이지 새로고침
-      await fetchReportDetails();
+      await fetchReportDetails(); // 최신 정보로 갱신
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류 발생';
       alert(`오류: ${errorMessage}`);
@@ -161,7 +189,8 @@ export default function AnalyzeReportPage() {
   if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
   if (!report) return <p className="text-center py-8">신고 정보를 찾을 수 없습니다.</p>;
 
-  const currentAnalysisOptions = analysisOptionsData[report.category as keyof typeof analysisOptionsData] || [];
+  const currentAnalysisOptions =
+    analysisOptionsData[report.category as keyof typeof analysisOptionsData] || [];
 
   return (
     <div className="container mx-auto p-0 md:p-4">
