@@ -142,18 +142,6 @@ export default function PushComposerPage() {
               onChange={e => setTitle(e.target.value)}
             />
           </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">예약 발송 (표시용)</label>
-            <input
-              type="datetime-local"
-              className="border rounded px-3 py-2 w-full"
-              value={scheduledAt}
-              onChange={e => setScheduledAt(e.target.value)}
-            />
-            <p className="text-xs text-gray-500 mt-1">※ 현재는 즉시 발송만 지원합니다.</p>
-          </div>
-
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">본문</label>
             <textarea

@@ -226,7 +226,6 @@ export async function POST(request: NextRequest) {
           }
         } else {
           failed += 1;
-          // 실패 이유로 UNREGISTERED 등 판단 어려움 → 일단 dead 처리는 하지 않음
         }
       });
     }
