@@ -50,7 +50,6 @@ export default function PushComposerPage() {
   // form state
   const [title, setTitle] = useState<string>('');
   const [body, setBody] = useState<string>('');
-  const [scheduledAt, setScheduledAt] = useState<string>(''); // 표시용(현재 즉시 발송)
 
   // ui state
   const [submitting, setSubmitting] = useState<boolean>(false);
