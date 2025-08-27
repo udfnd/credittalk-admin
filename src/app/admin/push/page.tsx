@@ -1,9 +1,8 @@
 // src/app/admin/push/page.tsx
 'use client';
 
-import { useEffect, useState, Fragment } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
 
@@ -41,13 +40,7 @@ type PushJob = {
 
 type EnqueueOk = { ok: true; job: PushJob };
 
-function isAudienceAll(aud: Audience | null | undefined): aud is AudienceAll {
-  return !!aud && typeof aud === 'object' && 'all' in aud && (aud as Record<string, unknown>).all === true;
-}
-
 export default function PushComposerPage() {
-  const supabase = createClientComponentClient();
-
   // form state
   const [title, setTitle] = useState<string>('');
   const [body, setBody] = useState<string>('');
