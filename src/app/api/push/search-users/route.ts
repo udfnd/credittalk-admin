@@ -37,7 +37,9 @@ type SearchResultItem = {
 async function isAdmin() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, user: null };
 
   const { data, error } = await supabase.rpc('is_current_user_admin');
@@ -56,7 +58,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(Number(searchParams.get('limit') || '200'), 500);
 
     // 1) 검색어로 public.users에서 후보 auth_user_id 뽑기
-    let matchedAuthIds = new Set<Uuid>();
+    const matchedAuthIds = new Set<Uuid>();
 
     if (q.length >= 1) {
       const uuidRegex = /^[0-9a-f-]{32,36}$/i;
@@ -68,16 +70,20 @@ export async function GET(request: NextRequest) {
         const { data: users, error: usersErr } = await supabaseAdmin
           .from('users')
           .select('id, auth_user_id, name, nickname, phone_number')
-          .or([
-            `name.ilike.%${q}%`,
-            `nickname.ilike.%${q}%`,
-            `phone_number.ilike.%${q}%`,
-          ].join(','))
+          .or(
+            [
+              `name.ilike.%${q}%`,
+              `nickname.ilike.%${q}%`,
+              `phone_number.ilike.%${q}%`,
+            ].join(','),
+          )
           .not('auth_user_id', 'is', null) // auth_user_id가 있어야 토큰과 매칭 가능
           .limit(500);
 
         if (usersErr) throw usersErr;
-        (users as UserRow[] | null ?? []).forEach(u => {
+
+        const userRows = (users ?? []) as UserRow[];
+        userRows.forEach((u) => {
           if (u.auth_user_id) matchedAuthIds.add(u.auth_user_id);
         });
       }
@@ -103,15 +109,14 @@ export async function GET(request: NextRequest) {
     const { data: tokens, error: tokensErr } = await tokenQuery;
     if (tokensErr) throw tokensErr;
 
-    const tokenRows: TokenRow[] = (tokens ?? []) as any;
-
-    if (!tokenRows.length) {
+    const tokenRows: TokenRow[] = (tokens ?? []) as TokenRow[];
+    if (tokenRows.length === 0) {
       return NextResponse.json({ ok: true, items: [] as SearchResultItem[] });
     }
 
     // 3) public.users에서 프로필 매핑 (auth_user_id IN (...))
-    const authIds = Array.from(new Set(tokenRows.map(t => t.user_id)));
-    const { data: userRows, error: users2Err } = await supabaseAdmin
+    const authIds = Array.from(new Set(tokenRows.map((t) => t.user_id)));
+    const { data: userRowsRaw, error: users2Err } = await supabaseAdmin
       .from('users')
       .select('id, auth_user_id, name, nickname, phone_number')
       .in('auth_user_id', authIds)
@@ -119,9 +124,11 @@ export async function GET(request: NextRequest) {
 
     if (users2Err) throw users2Err;
 
+    const userRows = (userRowsRaw ?? []) as UserRow[];
+
     const mapByAuthId = new Map<Uuid, UserRow>();
-    (userRows ?? []).forEach((u: any) => {
-      if (u?.auth_user_id) mapByAuthId.set(u.auth_user_id as Uuid, u as UserRow);
+    userRows.forEach((u) => {
+      if (u.auth_user_id) mapByAuthId.set(u.auth_user_id, u);
     });
 
     // 4) 응답 조립
@@ -130,18 +137,21 @@ export async function GET(request: NextRequest) {
       return {
         user_id: t.user_id,
         last_seen: t.last_seen,
-        profile: u ? {
-          app_user_id: u.id ?? null,
-          name: u.name ?? null,
-          nickname: u.nickname ?? null,
-          phone: u.phone_number ?? null,
-        } : null,
+        profile: u
+          ? {
+            app_user_id: u.id ?? null,
+            name: u.name ?? null,
+            nickname: u.nickname ?? null,
+            phone: u.phone_number ?? null,
+          }
+          : null,
       };
     });
 
     return NextResponse.json({ ok: true, items });
-  } catch (e: any) {
-    console.error('search-users error:', e?.message || e);
-    return new NextResponse(e?.message ?? 'internal error', { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('search-users error:', message);
+    return new NextResponse(message ?? 'internal error', { status: 500 });
   }
 }
