@@ -98,8 +98,9 @@ export default function PartnersAdminPage() {
       setLink('');
 
       await load();
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
     } finally {
       setSaving(false);
     }
