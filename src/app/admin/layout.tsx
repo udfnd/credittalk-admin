@@ -25,6 +25,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/reports', label: '신고 분석 및 관리' },
     { href: '/admin/statistics/sign-ups', label: '통계 관리' },
     { href: '/admin/push', label: 'PUSH 알림 발송' },
+    { href: '/admin/partners', label: '제휴사 관리' },
   ];
 
   return (
