@@ -1,4 +1,3 @@
-// src/app/api/push/enqueue/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
@@ -6,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { GoogleAuth, type AuthClient } from 'google-auth-library';
 
 export const runtime = 'nodejs';
+
 const ANDROID_CHANNEL_ID = 'push_default_v2';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
@@ -30,6 +30,8 @@ interface DeviceTokenRow {
   platform?: string | null;
 }
 
+type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
+
 interface PushJobRow {
   id: number;
   created_by: Uuid | null;
@@ -41,7 +43,7 @@ interface PushJobRow {
   target_user_ids: Uuid[] | number[] | null;
   dry_run: boolean;
   scheduled_at: string | null;
-  status: 'queued' | 'processing' | 'done' | 'failed';
+  status: JobStatus;
   result: Record<string, unknown> | null;
 }
 
@@ -51,6 +53,7 @@ interface EnqueueRequestBody {
   data?: Record<string, unknown> | null;
   audience?: Record<string, unknown> | null;
   targetUserIds?: Array<Uuid | number>;
+  imageUrl?: string; // ⬅️ 이미지 URL(선택)
 }
 
 interface FcmErrorShape {
@@ -116,24 +119,51 @@ async function sendToTokenV1(
   client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, unknown> | null }
+  payload: {
+    title: string;
+    body: string;
+    data?: Record<string, unknown> | null;
+    imageUrl?: string;
+  }
 ): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
+  if (payload.imageUrl) {
+    // 포어그라운드 Notifee 표시용
+    data.image = payload.imageUrl;
+  }
+
+  // HTTP v1 메시지
+  const message: Record<string, unknown> = {
+    token,
+    notification: {
+      title: payload.title,
+      body: payload.body,
+      ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+    },
+    data,
+    android: {
+      priority: 'HIGH',
+      notification: {
+        channel_id: ANDROID_CHANNEL_ID,
+        ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+      },
+    },
+    // iOS 고려 시(지금 안 써도 무해)
+    ...(payload.imageUrl
+      ? {
+        apns: {
+          payload: { aps: { 'mutable-content': 1 } },
+          fcm_options: { image: payload.imageUrl },
+        },
+      }
+      : {}),
+  };
+
   try {
     const res = await client.request<{ name?: string }>({
       url,
       method: 'POST',
-      data: {
-        message: {
-          token,
-          notification: { title: payload.title, body: payload.body },
-          data,
-          android: {
-            priority: 'HIGH',
-            notification: { channel_id: ANDROID_CHANNEL_ID },
-          },
-        },
-      },
+      data: { message },
     });
     return { ok: true, id: res.data?.name };
   } catch (e: unknown) {
@@ -154,13 +184,7 @@ export async function POST(request: NextRequest) {
   try {
     // 2) 입력 파싱
     const parsed = (await request.json().catch(() => ({}))) as Partial<EnqueueRequestBody>;
-    const {
-      title,
-      body: message,
-      data,
-      audience,
-      targetUserIds,
-    } = parsed;
+    const { title, body: message, data, audience, targetUserIds, imageUrl } = parsed;
 
     if (!title || !String(title).trim() || !message || !String(message).trim()) {
       return new NextResponse('title and body are required', { status: 400 });
@@ -182,16 +206,23 @@ export async function POST(request: NextRequest) {
     const rows = (tokensRows ?? []) as DeviceTokenRow[];
     const tokens = Array.from(new Set(rows.map((r) => r.token))).filter(Boolean);
 
-    // 4) push_jobs 레코드 생성 (processing)
+    // 4) push_jobs 레코드 생성 (processing) — data에 image도 함께 남겨 추적
+    const mergedData =
+      data && typeof data === 'object'
+        ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
+        : imageUrl
+          ? { image: imageUrl }
+          : null;
+
     const { data: jobRowRaw, error: insErr } = await supabaseAdmin
       .from('push_jobs')
       .insert({
         created_by: auth.user.id,
         title: String(title).trim(),
         body: String(message),
-        data: data && typeof data === 'object' ? data : null,
-        audience: (Array.isArray(targetUserIds) && targetUserIds.length) ? null : (audience ?? { all: true }),
-        target_user_ids: (Array.isArray(targetUserIds) && targetUserIds.length) ? targetUserIds : null,
+        data: mergedData,
+        audience: Array.isArray(targetUserIds) && targetUserIds.length ? null : (audience ?? { all: true }),
+        target_user_ids: Array.isArray(targetUserIds) && targetUserIds.length ? targetUserIds : null,
         dry_run: false,
         scheduled_at: null,
         status: 'processing',
@@ -213,7 +244,7 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < tokens.length; i += BATCH) {
       const chunk = tokens.slice(i, i + BATCH);
       const results = await Promise.allSettled(
-        chunk.map((t) => sendToTokenV1(client, url, t, { title, body: message, data: data ?? null }))
+        chunk.map((t) => sendToTokenV1(client, url, t, { title, body: message, data: data ?? null, imageUrl }))
       );
 
       results.forEach((r, idx) => {
@@ -232,9 +263,7 @@ export async function POST(request: NextRequest) {
 
     // 6) 무효 토큰 비활성화
     if (dead.length) {
-      await supabaseAdmin.from('device_push_tokens')
-        .update({ enabled: false })
-        .in('token', dead);
+      await supabaseAdmin.from('device_push_tokens').update({ enabled: false }).in('token', dead);
     }
 
     // 7) 결과 저장 (done)
