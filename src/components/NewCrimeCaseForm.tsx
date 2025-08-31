@@ -27,6 +27,25 @@ interface NewCrimeCaseFormProps {
   initialData?: NewCrimeCase;
 }
 
+// ✅ URL 정규화/검증: 스킴 자동 보정 + URL 생성 가능 여부 체크
+function normalizeUrl(input?: string): string {
+  if (!input) return '';
+  const s = String(input)
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '') // 제로폭 등 숨은 문자 제거
+    .replace(/\s+/g, ''); // 공백 제거
+
+  const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withScheme);
+    // http/https만 허용하고 싶다면 아래 라인으로 제한
+    if (!['http:', 'https:'].includes(u.protocol)) return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
 export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps) {
   const router = useRouter();
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
@@ -58,7 +77,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
           const fileName = `${uuidv4()}.${fileExtension}`;
           const filePath = `new-crime-cases/${fileName}`;
 
-          // 1. 공통 API를 통해 Presigned URL 요청
+          // 1) 업로드 URL 발급
           const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -71,7 +90,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
           }
           const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
 
-          // 2. Presigned URL로 파일 직접 업로드
+          // 2) 업로드
           const uploadResponse = await fetch(presignedUrl, {
             method: 'PUT',
             headers: { 'Content-Type': file.type },
@@ -86,23 +105,16 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
         uploadedImageUrls = newImageUrls;
       }
 
-      if (!isEditMode && uploadedImageUrls.length === 0) {
-        setMessage({ type: 'error', text: '새로운 자료에는 이미지 파일이 필수입니다.' });
-        return;
-      }
+      // ✅ URL 정규화(스킴 자동 보정 포함)
+      const linkUrlNormalized = data.link_url ? normalizeUrl(data.link_url) : '';
 
-      let linkUrl = data.link_url || '';
-      if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-        linkUrl = 'https://' + linkUrl;
-      }
-
-      // 3. 최종 데이터를 JSON으로 서버에 전송
+      // 3) 최종 전송 payload
       const payload = {
         title: data.title,
         method: data.method,
         is_published: data.is_published,
         category: data.category || '',
-        link_url: linkUrl,
+        link_url: linkUrlNormalized || null, // 빈 문자열이면 null 저장(선택)
         image_urls: uploadedImageUrls,
       };
 
@@ -161,6 +173,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
           placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"
         />
       </div>
+
       <div>
         <label htmlFor="method" className="block text-sm font-medium text-gray-700">범죄 수법</label>
         <textarea
@@ -183,6 +196,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
           initialImageUrls={initialData?.image_urls || []}
         />
       </div>
+
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
         <input
@@ -190,14 +204,16 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
           type="text"
           placeholder="example.com"
           {...register('link_url', {
-            pattern: {
-              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
-              message: "올바른 URL 형식이 아닙니다."
-            }
+            validate: (v) => {
+              if (!v) return true;              // 비워도 됨
+              return !!normalizeUrl(v) || '올바른 URL 형식이 아닙니다.';
+            },
           })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
+        {errors.link_url && <p className="mt-1 text-sm text-red-600">{String(errors.link_url.message)}</p>}
       </div>
+
       <div className="flex items-center">
         <input
           id="is_published"
@@ -207,6 +223,7 @@ export default function NewCrimeCaseForm({ initialData }: NewCrimeCaseFormProps)
         />
         <label htmlFor="is_published" className="ml-2 block text-sm text-gray-900">게시</label>
       </div>
+
       <button
         type="submit"
         disabled={isSubmitting}

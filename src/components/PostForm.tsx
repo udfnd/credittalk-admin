@@ -26,6 +26,23 @@ interface PostFormProps {
   initialData?: PostData;
 }
 
+// ✅ URL 정규화 + 검증 헬퍼
+function normalizeUrl(raw?: string | null): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  // 스킴 없으면 https:// 붙임
+  const withScheme = /^[a-z][a-z0-9+\-.]*:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withScheme);
+    // http/https만 허용
+    if (!['http:', 'https:'].includes(u.protocol)) return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
 export default function PostForm({ initialData }: PostFormProps) {
   const router = useRouter();
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
@@ -56,13 +73,13 @@ export default function PostForm({ initialData }: PostFormProps) {
         for (const file of imageFiles) {
           const fileExtension = file.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExtension}`;
-          const filePath = `community-posts/${fileName}`; // 커뮤니티 게시글용 폴더 지정
+          const filePath = `community-posts/${fileName}`;
 
-          // 1. 공통 API를 통해 Presigned URL 요청
+          // 1) Presigned URL 요청
           const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: filePath }),
+            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath }),
           });
 
           if (!presignedUrlResponse.ok) {
@@ -71,7 +88,7 @@ export default function PostForm({ initialData }: PostFormProps) {
           }
           const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
 
-          // 2. Presigned URL로 파일 직접 업로드
+          // 2) 업로드
           const uploadResponse = await fetch(presignedUrl, {
             method: 'PUT',
             headers: { 'Content-Type': file.type },
@@ -87,26 +104,23 @@ export default function PostForm({ initialData }: PostFormProps) {
         uploadedImageUrls = newImageUrls;
       }
 
-      let linkUrl = data.link_url || '';
-      if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
-        linkUrl = 'https://' + linkUrl;
-      }
+      // ✅ 링크 정규화
+      const normalizedLink = data.link_url ? normalizeUrl(data.link_url) : '';
 
-      // 3. 최종 데이터를 JSON으로 서버에 전송
+      // 3) 최종 페이로드
       const payload = {
         title: data.title,
         content: data.content,
         category: data.category,
-        link_url: linkUrl,
+        link_url: normalizedLink || null,
         image_urls: uploadedImageUrls,
       };
 
       const url = isEditMode ? `/api/admin/posts/${initialData?.id}` : '/api/admin/posts';
-      // 수정(PUT)과 생성(POST)을 구분
       const method = isEditMode ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
-        method: method,
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -145,6 +159,7 @@ export default function PostForm({ initialData }: PostFormProps) {
         />
         {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
       </div>
+
       <div>
         <label htmlFor="category" className="block text-sm font-medium text-gray-700">카테고리</label>
         <input
@@ -177,16 +192,17 @@ export default function PostForm({ initialData }: PostFormProps) {
           initialImageUrls={initialData?.image_urls || []}
         />
       </div>
+
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
         <input
           id="link_url"
           type="text"
-          placeholder="example.com"
+          placeholder="예: youtube.com/..., instagram.com/..., tiktok.com/..."
           {...register('link_url', {
-            pattern: {
-              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
-              message: "올바른 URL 형식이 아닙니다."
+            validate: (v) => {
+              if (!v) return true;                 // 비어있으면 통과
+              return normalizeUrl(v) ? true : '올바른 URL 형식이 아닙니다.';
             }
           })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"

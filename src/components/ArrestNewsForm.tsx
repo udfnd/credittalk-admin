@@ -28,6 +28,21 @@ interface ArrestNewsFormProps {
   initialData?: ArrestNews;
 }
 
+// ✅ URL 정규화 + 검증 헬퍼
+function normalizeUrl(raw?: string | null): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  const withScheme = /^[a-z][a-z0-9+\-.]*:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withScheme);
+    if (!['http:', 'https:'].includes(u.protocol)) return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
 export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
   const router = useRouter();
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
@@ -61,6 +76,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
           const fileExtension = file.name.split('.').pop();
           const fileName = `${uuidv4()}.${fileExtension}`;
 
+          // 1) Presigned URL 생성
           const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -73,6 +89,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
           }
           const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
 
+          // 2) 업로드
           const uploadResponse = await fetch(presignedUrl, {
             method: 'PUT',
             headers: { 'Content-Type': file.type },
@@ -88,13 +105,16 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         uploadedImageUrls = newImageUrls;
       }
 
+      // ✅ 링크 정규화
+      const normalizedLink = data.link_url ? normalizeUrl(data.link_url) : '';
+
       const payload = {
         title: data.title,
         content: data.content || '',
         author_name: data.author_name || '관리자',
         is_published: data.is_published,
         category: data.category || '',
-        link_url: data.link_url && !/^https?:\/\//i.test(data.link_url) ? `https://${data.link_url}` : data.link_url || null,
+        link_url: normalizedLink || null,
         image_urls: uploadedImageUrls
       };
 
@@ -139,7 +159,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         <input id="category" {...register('category')} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900" placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"/>
       </div>
       <div>
-        <label htmlFor="content" className="block text-sm font-medium text-gray-700">내용</label>
+        <label htmlFor="content" className="block text_sm font-medium text-gray-700">내용</label>
         <textarea id="content" rows={10} {...register('content')} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"/>
       </div>
       <div>
@@ -148,10 +168,23 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
       </div>
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
-        <input id="link_url" type="text" placeholder="example.com" {...register('link_url', { pattern: { value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/, message: "올바른 URL 형식이 아닙니다." } })} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"/>
+        <input
+          id="link_url"
+          type="text"
+          placeholder="예: www.tiktok.com/..., youtube.com/shorts/..., instagram.com/..."
+          {...register('link_url', {
+            // ✅ 정규식 대신 normalizeUrl 기반 검증
+            validate: (v) => {
+              if (!v) return true;                // 비어있으면 통과
+              return normalizeUrl(v) ? true : '올바른 URL 형식이 아닙니다.';
+            }
+          })}
+          className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
+        />
+        {errors.link_url && <p className="mt-1 text-sm text-red-600">{errors.link_url.message}</p>}
       </div>
       <div>
-        <label htmlFor="author_name" className="block text-sm font-medium text-gray-700">작성자</label>
+        <label htmlFor="author_name" className="block text-sm font_medium text-gray-700">작성자</label>
         <input id="author_name" {...register('author_name')} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"/>
       </div>
       <div className="flex items-center">

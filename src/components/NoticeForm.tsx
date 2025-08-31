@@ -28,6 +28,23 @@ interface NoticeFormProps {
   initialData?: Notice;
 }
 
+// ✅ URL 보정 + 검증
+function normalizeUrl(raw?: string | null): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  // 스킴 없으면 https:// 보정
+  const withScheme = /^[a-z][a-z0-9+\-.]*:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withScheme);
+    // http/https만 허용 (필요시 허용 스킴 추가)
+    if (!['http:', 'https:'].includes(u.protocol)) return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
 export default function NoticeForm({ initialData }: NoticeFormProps) {
   const router = useRouter();
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
@@ -67,7 +84,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
           const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: filePath }),
+            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath }),
           });
           if (!presignedUrlResponse.ok) throw new Error('Presigned URL 생성 실패');
           const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
@@ -85,6 +102,9 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         uploadedImageUrls = newImageUrls; // 새 이미지 URL로 교체
       }
 
+      // ✅ 링크 정규화
+      const normalizedLink = data.link_url ? normalizeUrl(data.link_url) : '';
+
       // 3. 최종 데이터를 JSON으로 서버에 전송
       const payload = {
         title: data.title,
@@ -92,12 +112,12 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         author_name: data.author_name || '관리자',
         is_published: data.is_published,
         category: data.category || '',
-        link_url: data.link_url && !/^https?:\/\//i.test(data.link_url) ? `https://${data.link_url}` : data.link_url || null,
+        link_url: normalizedLink || null, // 정규화된 값만 저장
         image_urls: uploadedImageUrls
       };
 
       const url = isEditMode ? `/api/admin/notices/${initialData?.id}` : '/api/admin/notices';
-      // 수정은 POST, 생성도 POST로 통일하여 API 단순화 (NoticeForm과 동일한 패턴)
+      // 수정/생성 모두 POST(기존 로직 유지)
       const method = 'POST';
 
       const response = await fetch(url, {
@@ -140,6 +160,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         />
         {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
       </div>
+
       <div>
         <label htmlFor="category" className="block text-sm font-medium text-gray-700">카테고리</label>
         <input
@@ -149,6 +170,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
           placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"
         />
       </div>
+
       <div>
         <label htmlFor="content" className="block text-sm font-medium text-gray-700">내용</label>
         <textarea
@@ -159,6 +181,7 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         />
         {errors.content && <p className="mt-1 text-sm text-red-600">{errors.content.message}</p>}
       </div>
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}
@@ -178,14 +201,17 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
           type="text"
           placeholder="example.com"
           {...register('link_url', {
-            pattern: {
-              value: /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/,
-              message: "올바른 URL 형식이 아닙니다."
+            // ✅ 정규식 대신 커스텀 검증: normalizeUrl 통과 시 OK
+            validate: (v) => {
+              if (!v) return true; // 비어있으면 통과(선택 항목)
+              return normalizeUrl(v) ? true : '올바른 URL 형식이 아닙니다.';
             }
           })}
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"
         />
+        {errors.link_url && <p className="mt-1 text-sm text-red-600">{errors.link_url.message}</p>}
       </div>
+
       <div>
         <label htmlFor="author_name" className="block text-sm font-medium text-gray-700">작성자</label>
         <input
