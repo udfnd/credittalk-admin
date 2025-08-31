@@ -14,11 +14,11 @@ async function isAdmin() {
   return { ok: data === true, user };
 }
 
-export async function PUT(req: NextRequest, ctx: { params: { id: string }}) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const auth = await isAdmin();
   if (!auth.ok) return new NextResponse('Unauthorized', { status: 401 });
 
-  const id = Number(ctx.params.id);
   const body = await req.json().catch(() => ({}));
 
   const patch: Record<string, unknown> = {};
@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest, ctx: { params: { id: string }}) {
   const { data, error } = await supabaseAdmin
     .from('help_desk_notices')
     .update(patch)
-    .eq('id', id)
+    .eq('id', Number(id))
     .select()
     .single();
 
@@ -40,15 +40,15 @@ export async function PUT(req: NextRequest, ctx: { params: { id: string }}) {
   return NextResponse.json({ ok: true, item: data });
 }
 
-export async function DELETE(_req: NextRequest, ctx: { params: { id: string }}) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const auth = await isAdmin();
   if (!auth.ok) return new NextResponse('Unauthorized', { status: 401 });
 
-  const id = Number(ctx.params.id);
   const { error } = await supabaseAdmin
     .from('help_desk_notices')
     .delete()
-    .eq('id', id);
+    .eq('id', Number(id));
 
   if (error) return new NextResponse(error.message, { status: 500 });
   return NextResponse.json({ ok: true });
