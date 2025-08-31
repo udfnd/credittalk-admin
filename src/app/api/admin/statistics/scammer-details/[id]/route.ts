@@ -18,12 +18,13 @@ async function isAdmin() {
 
 export async function DELETE(
   _req: NextRequest,
-  ctx: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const auth = await isAdmin();
   if (!auth.ok) return new NextResponse('Unauthorized', { status: 401 });
 
-  const idNum = Number(ctx.params.id);
+  const idNum = Number(id);
   if (!Number.isFinite(idNum)) {
     return new NextResponse('invalid id', { status: 400 });
   }
