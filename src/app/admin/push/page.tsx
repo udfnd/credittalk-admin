@@ -10,6 +10,7 @@ type JobData = {
   screen?: string;
   params?: string;
   image?: string;
+  link_url?: string;
 } | null;
 
 type AudienceAll = { all: true };
@@ -61,6 +62,11 @@ export default function PushComposerPage() {
   const [imageUrl, setImageUrl] = useState<string>('');
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const [linkUrl, setLinkUrl] = useState<string>('');        // 외부 URL (선택)
+  // const [screen, setScreen] = useState<string>('');          // 앱 내 이동 스크린 이름 (선택)
+  // const [paramsText, setParamsText] = useState<string>('');  // JSON 문자열 (선택)
+  // const [paramsError, setParamsError] = useState<string | null>(null);
 
   // 발송 결과
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -157,17 +163,41 @@ export default function PushComposerPage() {
       setSubmitting(true);
       setError(null);
       setResult(null);
+      // setParamsError(null);
+
+      // paramsText가 있으면 JSON 파싱 검증
+      // let parsedParams: unknown | undefined = undefined;
+      // if (paramsText.trim()) {
+      //   try {
+      //     parsedParams = JSON.parse(paramsText);
+      //   } catch {
+      //     setParamsError('params는 올바른 JSON 형식이어야 합니다.');
+      //     setSubmitting(false);
+      //     return;
+      //   }
+      // }
+
+      // data 페이로드 구성 (비어있으면 생략)
+      const dataPayload: Record<string, unknown> = {};
+      if (imageUrl) dataPayload.image = imageUrl;
+      if (linkUrl.trim()) dataPayload.link_url = linkUrl.trim();
+      // if (screen.trim()) dataPayload.screen = screen.trim();
+      // if (parsedParams !== undefined) dataPayload.params = parsedParams;
+
+      const hasData = Object.keys(dataPayload).length > 0;
 
       const payload: {
         title: string;
         body: string;
         imageUrl?: string;
         targetUserIds?: string[];
+        data?: Record<string, unknown>;
       } = {
         title,
         body,
         ...(imageUrl ? { imageUrl } : {}),
-        ...(hasSelection ? { targetUserIds: selectedIds } : {}), // 선택 있으면 대상 지정
+        ...(hasSelection ? { targetUserIds: selectedIds } : {}),
+        ...(hasData ? { data: dataPayload } : {}),
       };
 
       const res = await fetch('/api/push/enqueue', {
@@ -181,7 +211,6 @@ export default function PushComposerPage() {
       if (!res.ok) {
         throw new Error((json as unknown as { error?: string })?.error ?? `HTTP ${res.status}`);
       }
-
       setResult(json);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -286,6 +315,7 @@ export default function PushComposerPage() {
         <h2 className="text-lg font-semibold mb-4">메시지 작성</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 제목 */}
           <div>
             <label className="block text-sm font-medium mb-1">제목</label>
             <input
@@ -296,6 +326,7 @@ export default function PushComposerPage() {
             />
           </div>
 
+          {/* 이미지 업로드 */}
           <div>
             <label className="block text-sm font-medium mb-1">이미지 업로드 (선택)</label>
             <input
@@ -314,6 +345,7 @@ export default function PushComposerPage() {
             )}
           </div>
 
+          {/* 본문 */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">본문</label>
             <textarea
@@ -323,6 +355,44 @@ export default function PushComposerPage() {
               onChange={e => setBody(e.target.value)}
             />
           </div>
+
+          {/* ✅ 링크(외부 URL) */}
+          <div>
+            <label className="block text-sm font-medium mb-1">링크 URL (선택)</label>
+            <input
+              className="border rounded px-3 py-2 w-full"
+              placeholder="예) https://www.example.com/notice/123"
+              value={linkUrl}
+              onChange={e => setLinkUrl(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-gray-500">앱 알림 탭 시 외부 브라우저로 열립니다.</p>
+          </div>
+
+          {/*/!* ✅ 앱 내 이동 스크린/파라미터 *!/*/}
+          {/*<div>*/}
+          {/*  <label className="block text-sm font-medium mb-1">앱 스크린 이름 (선택)</label>*/}
+          {/*  <input*/}
+          {/*    className="border rounded px-3 py-2 w-full"*/}
+          {/*    placeholder="예) NoticeDetail"*/}
+          {/*    value={screen}*/}
+          {/*    onChange={e => setScreen(e.target.value)}*/}
+          {/*  />*/}
+          {/*  <p className="mt-1 text-xs text-gray-500">앱 내부 특정 화면으로 이동하려면 스크린 이름을 적어주세요.</p>*/}
+          {/*</div>*/}
+
+          {/*<div className="md:col-span-2">*/}
+          {/*  <label className="block text-sm font-medium mb-1">스크린 파라미터(JSON, 선택)</label>*/}
+          {/*  <textarea*/}
+          {/*    className="border rounded px-3 py-2 w-full min-h-[80px]"*/}
+          {/*    placeholder='예) { "noticeId": 123 }'*/}
+          {/*    value={paramsText}*/}
+          {/*    onChange={e => setParamsText(e.target.value)}*/}
+          {/*  />*/}
+          {/*  {paramsError && <p className="text-xs text-red-600 mt-1">{paramsError}</p>}*/}
+          {/*  <p className="mt-1 text-xs text-gray-500">*/}
+          {/*    JSON 형식으로 입력하세요. (예: {"{ \"noticeId\": 123 }"})*/}
+          {/*  </p>*/}
+          {/*</div>*/}
         </div>
 
         <div className="mt-6">

@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from "next/link";
 
 type Banner = {
   id: number;
@@ -216,7 +217,7 @@ export default function PartnersAdminPage() {
                   <img src={b.image_url} alt="" className="h-12 w-auto rounded" />
                 </td>
                 <td className="px-3 py-2">{b.title || '-'}</td>
-                <td className="px-3 py-2 text-blue-600">{b.link_url || '-'}</td>
+                <td className="px-3 py-2 text-blue-600"><Link href={b.link_url || ""} target="_blank">{b.link_url || '-'}</Link></td>
                 <td className="px-3 py-2">{b.sort}</td>
                 <td className="px-3 py-2">
                   <button
