@@ -77,8 +77,6 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
   const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
   const isEditMode = !!initialData;
 
-  const watchedFiles = watch(['imageFile_0', 'imageFile_1', 'imageFile_2']);
-
   useEffect(() => {
     const initialUrls = initialData?.image_urls || [];
     const newPreviews: (string | null)[] = [null, null, null];
