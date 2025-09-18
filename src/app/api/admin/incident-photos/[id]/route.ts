@@ -43,7 +43,6 @@ export async function GET(
   return NextResponse.json(data);
 }
 
-// [수정됨] 사진 정보 수정 API 전체를 image_urls 기준으로 수정합니다.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -63,26 +62,32 @@ export async function POST(
       category,
       is_published,
       link_url,
+      image_urls: image_urls || [],
     };
 
     const BUCKET_NAME = 'post-images';
 
-    // 새 이미지가 제공된 경우(image_urls가 존재하고 내용이 있을 때)
-    if (image_urls && Array.isArray(image_urls)) {
-      // 1. 기존 이미지 삭제
-      const { data: currentPhoto } = await supabaseAdmin.from('incident_photos').select('image_urls').eq('id', id).single();
-      if (currentPhoto?.image_urls && currentPhoto.image_urls.length > 0) {
-        const oldImagePaths = currentPhoto.image_urls.map((url: string) => {
-          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch { return null; }
+    const { data: currentPhoto } = await supabaseAdmin.from('incident_photos').select('image_urls').eq('id', id).single();
+
+    if (currentPhoto) {
+      const oldImageUrls: string[] = currentPhoto.image_urls || [];
+      const newImageUrls: string[] = updates.image_urls || [];
+
+      const urlsToDelete = oldImageUrls.filter((url: string) => !newImageUrls.includes(url));
+
+      if (urlsToDelete.length > 0) {
+        const pathsToDelete = urlsToDelete.map((url: string) => {
+          try {
+            return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1];
+          } catch {
+            return null;
+          }
         }).filter(Boolean);
 
-        if (oldImagePaths.length > 0) {
-          await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
+        if (pathsToDelete.length > 0) {
+          await supabaseAdmin.storage.from(BUCKET_NAME).remove(pathsToDelete as string[]);
         }
       }
-      // 2. DB에 새 URL 업데이트
-      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
@@ -100,7 +105,6 @@ export async function POST(
   }
 }
 
-// [수정됨] 사진 삭제 API를 image_urls 기준으로 수정합니다.
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -129,10 +133,17 @@ export async function DELETE(
   if (deleteError) return new NextResponse(deleteError.message, { status: 500 });
 
   if (photo.image_urls && photo.image_urls.length > 0) {
-    const BUCKET_NAME = 'incident-photos';
-    const imageNames = photo.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
-    if(imageNames.length > 0){
-      await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
+    const BUCKET_NAME = 'post-images';
+    const imagePaths = photo.image_urls.map((url: string) => {
+      try {
+        return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1];
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+
+    if(imagePaths.length > 0){
+      await supabaseAdmin.storage.from(BUCKET_NAME).remove(imagePaths as string[]);
     }
   }
 

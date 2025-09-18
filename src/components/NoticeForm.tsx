@@ -1,11 +1,11 @@
 // src/components/NoticeForm.tsx
 'use client'
 
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { useState } from 'react';
+import { useForm, SubmitHandler, Path, PathValue } from 'react-hook-form';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUpload from './ImageUpload';
-import { v4 as uuidv4 } from 'uuid'; // 파일명 생성을 위해 uuid 임포트
+import { v4 as uuidv4 } from 'uuid';
 
 type Notice = {
   id?: number;
@@ -28,21 +28,42 @@ interface NoticeFormProps {
   initialData?: Notice;
 }
 
-// ✅ URL 보정 + 검증
 function normalizeUrl(raw?: string | null): string {
   if (!raw) return '';
   const s = String(raw).trim();
   if (!s) return '';
-  // 스킴 없으면 https:// 보정
   const withScheme = /^[a-z][a-z0-9+\-.]*:\/\//i.test(s) ? s : `https://${s}`;
   try {
     const u = new URL(withScheme);
-    // http/https만 허용 (필요시 허용 스킴 추가)
     if (!['http:', 'https:'].includes(u.protocol)) return '';
     return u.toString();
   } catch {
     return '';
   }
+}
+
+async function uploadFile(file: File): Promise<string> {
+  const BUCKET_NAME = 'notice-images';
+  const fileExtension = file.name.split('.').pop();
+  const fileName = `${uuidv4()}.${fileExtension}`;
+  const filePath = `${fileName}`;
+
+  const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bucketName: BUCKET_NAME, filePath }),
+  });
+  if (!presignedUrlResponse.ok) throw new Error('Presigned URL 생성 실패');
+  const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+  const uploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!uploadResponse.ok) throw new Error('스토리지 업로드 실패');
+
+  return publicUrl;
 }
 
 export default function NoticeForm({ initialData }: NoticeFormProps) {
@@ -54,70 +75,96 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
     },
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
   const isEditMode = !!initialData;
+
+  useEffect(() => {
+    const initialUrls = initialData?.image_urls || [];
+    const newPreviews: (string | null)[] = [null, null, null];
+    initialUrls.slice(0, 3).forEach((url, index) => {
+      newPreviews[index] = url;
+    });
+    setPreviews(newPreviews);
+  }, [initialData]);
+
+  useEffect(() => {
+    const subscription = watch((value, { name, type }) => {
+      if (type !== 'change' || !name || !name.startsWith('imageFile_')) return;
+
+      const index = parseInt(name.split('_')[1], 10);
+      const fileList = value[name as keyof FormInputs] as FileList | undefined;
+
+      setPreviews(currentPreviews => {
+        const newPreviews = [...currentPreviews];
+        const oldPreview = newPreviews[index];
+
+        if (oldPreview && oldPreview.startsWith('blob:')) {
+          URL.revokeObjectURL(oldPreview);
+        }
+
+        if (fileList && fileList.length > 0) {
+          newPreviews[index] = URL.createObjectURL(fileList[0]);
+        } else {
+          newPreviews[index] = initialData?.image_urls?.[index] || null;
+        }
+
+        return newPreviews;
+      });
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, initialData]);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    const fieldName = `imageFile_${index}` as Path<FormInputs>;
+    setValue(fieldName, undefined as PathValue<FormInputs, typeof fieldName>, { shouldValidate: true });
+
+    setPreviews(currentPreviews => {
+      const newPreviews = [...currentPreviews];
+      const oldPreview = newPreviews[index];
+      if (oldPreview && oldPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(oldPreview);
+      }
+      newPreviews[index] = null;
+      return newPreviews;
+    });
+  }, [setValue]);
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
-
     try {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < 3; i++) {
-        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-        if (fileList && fileList.length > 0) {
-          imageFiles.push(fileList[0]);
+      const finalImageUrls: string[] = [];
+      const currentFiles = [data.imageFile_0, data.imageFile_1, data.imageFile_2];
+
+      const uploadPromises = previews.map(async (preview, index) => {
+        if (preview) {
+          if (preview.startsWith('blob:')) {
+            const fileList = currentFiles[index];
+            if (fileList && fileList.length > 0) {
+              return uploadFile(fileList[0]);
+            }
+          } else if (preview.startsWith('http')) {
+            return preview;
+          }
         }
-      }
+        return null;
+      });
 
-      let uploadedImageUrls: string[] = initialData?.image_urls || [];
+      const results = await Promise.all(uploadPromises);
+      finalImageUrls.push(...results.filter((url): url is string => url !== null));
 
-      // 새 이미지가 있으면 Presigned URL 방식으로 업로드
-      if (imageFiles.length > 0) {
-        const BUCKET_NAME = 'notice-images';
-        const newImageUrls: string[] = [];
-
-        for (const file of imageFiles) {
-          const fileExtension = file.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExtension}`;
-          const filePath = `${fileName}`; // 버킷 내 경로
-
-          // 1. Presigned URL 요청 (공통 API 사용)
-          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath }),
-          });
-          if (!presignedUrlResponse.ok) throw new Error('Presigned URL 생성 실패');
-          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
-
-          // 2. Presigned URL로 파일 직접 업로드
-          const uploadResponse = await fetch(presignedUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type },
-            body: file,
-          });
-          if (!uploadResponse.ok) throw new Error('스토리지 업로드 실패');
-
-          newImageUrls.push(publicUrl);
-        }
-        uploadedImageUrls = newImageUrls; // 새 이미지 URL로 교체
-      }
-
-      // ✅ 링크 정규화
       const normalizedLink = data.link_url ? normalizeUrl(data.link_url) : '';
 
-      // 3. 최종 데이터를 JSON으로 서버에 전송
       const payload = {
         title: data.title,
         content: data.content,
         author_name: data.author_name || '관리자',
         is_published: data.is_published,
         category: data.category || '',
-        link_url: normalizedLink || null, // 정규화된 값만 저장
-        image_urls: uploadedImageUrls
+        link_url: normalizedLink || null,
+        image_urls: finalImageUrls
       };
 
       const url = isEditMode ? `/api/admin/notices/${initialData?.id}` : '/api/admin/notices';
-      // 수정/생성 모두 POST(기존 로직 유지)
       const method = 'POST';
 
       const response = await fetch(url, {
@@ -132,7 +179,10 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
       }
 
       setMessage({ type: 'success', text: `공지사항이 성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
-      if (!isEditMode) reset();
+      if (!isEditMode) {
+        reset();
+        setPreviews([null, null, null]);
+      };
 
       router.refresh();
       setTimeout(() => router.push('/admin/notices'), 1500);
@@ -188,9 +238,8 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
         </label>
         <ImageUpload
           register={register}
-          watch={watch}
-          setValue={setValue}
-          initialImageUrls={initialData?.image_urls || []}
+          previews={previews}
+          onRemove={handleRemoveImage}
         />
       </div>
 
@@ -201,9 +250,8 @@ export default function NoticeForm({ initialData }: NoticeFormProps) {
           type="text"
           placeholder="example.com"
           {...register('link_url', {
-            // ✅ 정규식 대신 커스텀 검증: normalizeUrl 통과 시 OK
             validate: (v) => {
-              if (!v) return true; // 비어있으면 통과(선택 항목)
+              if (!v) return true;
               return normalizeUrl(v) ? true : '올바른 URL 형식이 아닙니다.';
             }
           })}

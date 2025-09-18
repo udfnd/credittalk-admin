@@ -73,14 +73,47 @@ export async function POST(
 
     if (image_urls && Array.isArray(image_urls)) {
       const { data: currentNews } = await supabaseAdmin.from('arrest_news').select('image_urls').eq('id', id).single();
+
+      if (currentNews) {
+        const oldImageUrls: string[] = currentNews.image_urls || [];
+        const newImageUrls: string[] = image_urls;
+
+        const urlsToDelete = oldImageUrls.filter((url: string) => !newImageUrls.includes(url));
+
+        if (urlsToDelete.length > 0) {
+          const oldImageNames = urlsToDelete.map((url: string) => {
+            try {
+              const pathname = new URL(url).pathname;
+              return pathname.substring(pathname.lastIndexOf('/') + 1);
+            } catch {
+              return null;
+            }
+          }).filter(Boolean);
+
+          if (oldImageNames.length > 0) {
+            await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
+          }
+        }
+      }
+      updates.image_urls = image_urls;
+    } else if (image_urls === null || (Array.isArray(image_urls) && image_urls.length === 0)) {
+      const { data: currentNews } = await supabaseAdmin.from('arrest_news').select('image_urls').eq('id', id).single();
       if (currentNews?.image_urls && currentNews.image_urls.length > 0) {
-        const oldImageNames = currentNews.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+        const oldImageNames = currentNews.image_urls.map((url: string) => {
+          try {
+            const pathname = new URL(url).pathname;
+            return pathname.substring(pathname.lastIndexOf('/') + 1);
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
         if (oldImageNames.length > 0) {
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
         }
       }
-      updates.image_urls = image_urls;
+      updates.image_urls = [];
     }
+
 
     const { error } = await supabaseAdmin
       .from('arrest_news')
@@ -126,7 +159,14 @@ export async function DELETE(
 
   if (newsItem?.image_urls && newsItem.image_urls.length > 0) {
     const BUCKET_NAME = 'arrest-news-images';
-    const imageNames = newsItem.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+    const imageNames = newsItem.image_urls.map((url: string) => {
+      try {
+        const pathname = new URL(url).pathname;
+        return pathname.substring(pathname.lastIndexOf('/') + 1);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
     if (imageNames.length > 0) {
       await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
     }

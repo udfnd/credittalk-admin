@@ -62,19 +62,33 @@ export async function PUT(
       content,
       rating,
       is_published,
+      image_urls: image_urls || [],
     };
 
     const BUCKET_NAME = 'reviews-images';
 
-    if (image_urls && Array.isArray(image_urls)) {
-      const { data: currentReview } = await supabaseAdmin.from('reviews').select('image_urls').eq('id', id).single();
-      if (currentReview?.image_urls && currentReview.image_urls.length > 0) {
-        const oldImageNames = currentReview.image_urls.map((url:string) => url.split('/').pop()).filter(Boolean);
+    const { data: currentReview } = await supabaseAdmin.from('reviews').select('image_urls').eq('id', id).single();
+
+    if (currentReview) {
+      const oldImageUrls: string[] = currentReview.image_urls || [];
+      const newImageUrls: string[] = updates.image_urls || [];
+
+      const urlsToDelete = oldImageUrls.filter((url: string) => !newImageUrls.includes(url));
+
+      if (urlsToDelete.length > 0) {
+        const oldImageNames = urlsToDelete.map((url:string) => {
+          try {
+            const pathname = new URL(url).pathname;
+            return pathname.substring(pathname.lastIndexOf('/') + 1);
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+
         if (oldImageNames.length > 0) {
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImageNames as string[]);
         }
       }
-      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
@@ -123,7 +137,14 @@ export async function DELETE(
 
     if (review?.image_urls && review.image_urls.length > 0) {
       const BUCKET_NAME = 'reviews-images';
-      const imageNames = review.image_urls.map((url: string) => url.split('/').pop()).filter(Boolean);
+      const imageNames = review.image_urls.map((url: string) => {
+        try {
+          const pathname = new URL(url).pathname;
+          return pathname.substring(pathname.lastIndexOf('/') + 1);
+        } catch {
+          return null;
+        }
+      }).filter(Boolean);
       if (imageNames.length > 0) {
         await supabaseAdmin.storage.from(BUCKET_NAME).remove(imageNames as string[]);
       }

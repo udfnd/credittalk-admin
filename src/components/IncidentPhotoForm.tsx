@@ -1,8 +1,8 @@
 // src/components/IncidentPhotoForm.tsx
 'use client'
 
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { useState } from 'react';
+import { useForm, SubmitHandler, Path, PathValue } from 'react-hook-form';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUpload from './ImageUpload';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,7 +27,6 @@ interface IncidentPhotoFormProps {
   initialData?: IncidentPhoto;
 }
 
-// ✅ URL 보정 + 검증
 function normalizeUrl(raw?: string | null): string {
   if (!raw) return '';
   const s = String(raw).trim();
@@ -42,75 +41,131 @@ function normalizeUrl(raw?: string | null): string {
   }
 }
 
+async function uploadFile(file: File): Promise<string> {
+  const BUCKET_NAME = 'post-images';
+  const fileExtension = file.name.split('.').pop();
+  const fileName = `${uuidv4()}.${fileExtension}`;
+  const filePath = `incident-photos/${fileName}`;
+
+  const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bucketName: BUCKET_NAME, filePath })
+  });
+  if (!presignedUrlResponse.ok) {
+    const error = await presignedUrlResponse.json();
+    throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+  }
+  const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+  const uploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file
+  });
+  if (!uploadResponse.ok) throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
+
+  return publicUrl;
+}
+
 export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProps) {
   const router = useRouter();
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
     defaultValues: initialData || { is_published: true }
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
   const isEditMode = !!initialData;
+
+  const watchedFiles = watch(['imageFile_0', 'imageFile_1', 'imageFile_2']);
+
+  useEffect(() => {
+    const initialUrls = initialData?.image_urls || [];
+    const newPreviews: (string | null)[] = [null, null, null];
+    initialUrls.slice(0, 3).forEach((url, index) => {
+      newPreviews[index] = url;
+    });
+    setPreviews(newPreviews);
+  }, [initialData]);
+
+  useEffect(() => {
+    const subscription = watch((value, { name, type }) => {
+      if (type !== 'change' || !name || !name.startsWith('imageFile_')) return;
+
+      const index = parseInt(name.split('_')[1], 10);
+      const fileList = value[name as keyof FormInputs] as FileList | undefined;
+
+      setPreviews(currentPreviews => {
+        const newPreviews = [...currentPreviews];
+        const oldPreview = newPreviews[index];
+
+        if (oldPreview && oldPreview.startsWith('blob:')) {
+          URL.revokeObjectURL(oldPreview);
+        }
+
+        if (fileList && fileList.length > 0) {
+          newPreviews[index] = URL.createObjectURL(fileList[0]);
+        } else {
+          newPreviews[index] = initialData?.image_urls?.[index] || null;
+        }
+
+        return newPreviews;
+      });
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, initialData]);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    const fieldName = `imageFile_${index}` as Path<FormInputs>;
+    setValue(fieldName, undefined as PathValue<FormInputs, typeof fieldName>, { shouldValidate: true });
+
+    setPreviews(currentPreviews => {
+      const newPreviews = [...currentPreviews];
+      const oldPreview = newPreviews[index];
+      if (oldPreview && oldPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(oldPreview);
+      }
+      newPreviews[index] = null;
+      return newPreviews;
+    });
+  }, [setValue]);
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
     try {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < 3; i++) {
-        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-        if (fileList && fileList.length > 0) imageFiles.push(fileList[0]);
-      }
+      const finalImageUrls: string[] = [];
+      const currentFiles = [data.imageFile_0, data.imageFile_1, data.imageFile_2];
 
-      let uploadedImageUrls: string[] = initialData?.image_urls || [];
-
-      // 새 이미지가 있으면 Presigned URL 방식으로 업로드
-      if (imageFiles.length > 0) {
-        const BUCKET_NAME = 'post-images';
-        const newImageUrls: string[] = [];
-
-        for (const file of imageFiles) {
-          const fileExtension = file.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExtension}`;
-          const filePath = `incident-photos/${fileName}`;
-
-          // 1) Presigned URL 생성
-          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath })
-          });
-          if (!presignedUrlResponse.ok) {
-            const error = await presignedUrlResponse.json();
-            throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+      const uploadPromises = previews.map(async (preview, index) => {
+        if (preview) {
+          if (preview.startsWith('blob:')) {
+            const fileList = currentFiles[index];
+            if (fileList && fileList.length > 0) {
+              return uploadFile(fileList[0]);
+            }
+          } else if (preview.startsWith('http')) {
+            return preview;
           }
-          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
-
-          // 2) 업로드
-          const uploadResponse = await fetch(presignedUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type },
-            body: file
-          });
-          if (!uploadResponse.ok) throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
-
-          newImageUrls.push(publicUrl);
         }
-        uploadedImageUrls = newImageUrls;
-      }
+        return null;
+      });
 
-      // ✅ 링크 정규화
+      const results = await Promise.all(uploadPromises);
+      finalImageUrls.push(...results.filter((url): url is string => url !== null));
+
       const normalizedLink = data.link_url ? normalizeUrl(data.link_url) : '';
 
-      // 3) 저장
       const payload = {
         title: data.title,
         description: data.description || '',
         category: data.category || '',
         is_published: data.is_published,
         link_url: normalizedLink || null,
-        image_urls: uploadedImageUrls
+        image_urls: finalImageUrls
       };
 
       const url = isEditMode ? `/api/admin/incident-photos/${initialData?.id}` : '/api/admin/incident-photos';
-      const method = 'POST'; // 수정/생성 모두 POST 유지
+      const method = 'POST';
 
       const response = await fetch(url, {
         method,
@@ -124,7 +179,10 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
       }
 
       setMessage({ type: 'success', text: `사진 자료가 성공적으로 ${isEditMode ? '수정' : '업로드'}되었습니다.` });
-      if (!isEditMode) reset();
+      if (!isEditMode) {
+        reset();
+        setPreviews([null, null, null]);
+      };
 
       router.refresh();
       setTimeout(() => router.push('/admin/incident-photos'), 1500);
@@ -155,9 +213,8 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
         </label>
         <ImageUpload
           register={register}
-          watch={watch}
-          setValue={setValue}
-          initialImageUrls={initialData?.image_urls || []}
+          previews={previews}
+          onRemove={handleRemoveImage}
         />
       </div>
 
@@ -188,9 +245,8 @@ export default function IncidentPhotoForm({ initialData }: IncidentPhotoFormProp
           type="text"
           placeholder="example.com"
           {...register('link_url', {
-            // ✅ 정규식 대신 normalizeUrl 기반 커스텀 검증
             validate: (v) => {
-              if (!v) return true; // 비어있으면 통과
+              if (!v) return true;
               return normalizeUrl(v) ? true : '올바른 URL 형식이 아닙니다.';
             }
           })}

@@ -64,23 +64,33 @@ export async function PUT(
       is_published,
       link_url,
       category,
+      image_urls: image_urls || [],
     };
 
     const BUCKET_NAME = 'post-images';
 
-    if (image_urls && Array.isArray(image_urls)) {
-      const { data: currentCase } = await supabaseAdmin.from('new_crime_cases').select('image_urls').eq('id', id).single();
-      if (currentCase?.image_urls && currentCase.image_urls.length > 0) {
-        const oldImagePaths = currentCase.image_urls.map((url: string) => {
-          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch { return null; }
+    const { data: currentCase } = await supabaseAdmin.from('new_crime_cases').select('image_urls').eq('id', id).single();
+
+    if (currentCase) {
+      const oldImageUrls: string[] = currentCase.image_urls || [];
+      const newImageUrls: string[] = updates.image_urls || [];
+
+      const urlsToDelete = oldImageUrls.filter((url: string) => !newImageUrls.includes(url));
+
+      if (urlsToDelete.length > 0) {
+        const oldImagePaths = urlsToDelete.map((url: string) => {
+          try {
+            return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1];
+          }
+          catch {
+            return null;
+          }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
         }
       }
-      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin

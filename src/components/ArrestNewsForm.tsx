@@ -1,8 +1,8 @@
 // src/components/ArrestNewsForm.tsx
 'use client';
 
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { useState } from 'react';
+import { useForm, SubmitHandler, Path, PathValue } from 'react-hook-form';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUpload from './ImageUpload';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,7 +28,6 @@ interface ArrestNewsFormProps {
   initialData?: ArrestNews;
 }
 
-// ✅ URL 정규화 + 검증 헬퍼
 function normalizeUrl(raw?: string | null): string {
   if (!raw) return '';
   const s = String(raw).trim();
@@ -43,6 +42,35 @@ function normalizeUrl(raw?: string | null): string {
   }
 }
 
+async function uploadFile(file: File): Promise<string> {
+  const BUCKET_NAME = 'arrest-news-images';
+  const fileExtension = file.name.split('.').pop();
+  const fileName = `${uuidv4()}.${fileExtension}`;
+
+  const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: fileName }),
+  });
+
+  if (!presignedUrlResponse.ok) {
+    const error = await presignedUrlResponse.json();
+    throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+  }
+  const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
+
+  const uploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
+  }
+  return publicUrl;
+}
+
 export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
   const router = useRouter();
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormInputs>({
@@ -51,61 +79,88 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
       author_name: '관리자',
     },
   });
+
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
   const isEditMode = !!initialData;
+
+  // Set initial previews from initialData. This runs only once.
+  useEffect(() => {
+    const initialUrls = initialData?.image_urls || [];
+    const newPreviews: (string | null)[] = [null, null, null];
+    initialUrls.slice(0, 3).forEach((url, index) => {
+      newPreviews[index] = url;
+    });
+    setPreviews(newPreviews);
+  }, [initialData]);
+
+  // Watch for file input changes and update previews
+  useEffect(() => {
+    const subscription = watch((value, { name, type }) => {
+      if (type !== 'change' || !name || !name.startsWith('imageFile_')) return;
+
+      const index = parseInt(name.split('_')[1], 10);
+      const fileList = value[name as keyof FormInputs] as FileList | undefined;
+
+      setPreviews(currentPreviews => {
+        const newPreviews = [...currentPreviews];
+        const oldPreview = newPreviews[index];
+
+        if (oldPreview && oldPreview.startsWith('blob:')) {
+          URL.revokeObjectURL(oldPreview);
+        }
+
+        if (fileList && fileList.length > 0) {
+          newPreviews[index] = URL.createObjectURL(fileList[0]);
+        } else {
+          // If the file input is cleared, revert to the initial URL if it exists
+          newPreviews[index] = initialData?.image_urls?.[index] || null;
+        }
+
+        return newPreviews;
+      });
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, initialData]);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    const fieldName = `imageFile_${index}` as Path<FormInputs>;
+    setValue(fieldName, undefined as PathValue<FormInputs, typeof fieldName>, { shouldValidate: true });
+
+    setPreviews(currentPreviews => {
+      const newPreviews = [...currentPreviews];
+      const oldPreview = newPreviews[index];
+      if (oldPreview && oldPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(oldPreview);
+      }
+      newPreviews[index] = null;
+      return newPreviews;
+    });
+  }, [setValue]);
 
   const onSubmit: SubmitHandler<FormInputs> = async (data) => {
     setMessage(null);
-
     try {
-      const imageFiles: File[] = [];
-      for (let i = 0; i < 3; i++) {
-        const fileList = data[`imageFile_${i}` as keyof FormInputs] as FileList | undefined;
-        if (fileList && fileList.length > 0) {
-          imageFiles.push(fileList[0]);
-        }
-      }
+      const finalImageUrls: string[] = [];
+      const currentFiles = [data.imageFile_0, data.imageFile_1, data.imageFile_2];
 
-      let uploadedImageUrls: string[] = initialData?.image_urls || [];
-
-      if (imageFiles.length > 0) {
-        const BUCKET_NAME = 'arrest-news-images';
-        const newImageUrls: string[] = [];
-
-        for (const file of imageFiles) {
-          const fileExtension = file.name.split('.').pop();
-          const fileName = `${uuidv4()}.${fileExtension}`;
-
-          // 1) Presigned URL 생성
-          const presignedUrlResponse = await fetch('/api/admin/generate-upload-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bucketName: BUCKET_NAME, filePath: fileName }),
-          });
-
-          if (!presignedUrlResponse.ok) {
-            const error = await presignedUrlResponse.json();
-            throw new Error(`Presigned URL 생성 실패: ${error.message}`);
+      const uploadPromises = previews.map(async (preview, index) => {
+        if (preview) {
+          if (preview.startsWith('blob:')) {
+            const fileList = currentFiles[index];
+            if (fileList && fileList.length > 0) {
+              return uploadFile(fileList[0]);
+            }
+          } else if (preview.startsWith('http')) {
+            return preview;
           }
-          const { presignedUrl, publicUrl } = await presignedUrlResponse.json();
-
-          // 2) 업로드
-          const uploadResponse = await fetch(presignedUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type },
-            body: file,
-          });
-
-          if (!uploadResponse.ok) {
-            throw new Error(`스토리지 업로드 실패: ${uploadResponse.statusText}`);
-          }
-
-          newImageUrls.push(publicUrl);
         }
-        uploadedImageUrls = newImageUrls;
-      }
+        return null;
+      });
 
-      // ✅ 링크 정규화
+      const results = await Promise.all(uploadPromises);
+      finalImageUrls.push(...results.filter((url): url is string => url !== null));
+
       const normalizedLink = data.link_url ? normalizeUrl(data.link_url) : '';
 
       const payload = {
@@ -115,7 +170,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         is_published: data.is_published,
         category: data.category || '',
         link_url: normalizedLink || null,
-        image_urls: uploadedImageUrls
+        image_urls: finalImageUrls
       };
 
       const url = isEditMode ? `/api/admin/arrest-news/${initialData?.id}` : '/api/admin/arrest-news';
@@ -133,18 +188,24 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
       }
 
       setMessage({ type: 'success', text: `성공적으로 ${isEditMode ? '수정' : '생성'}되었습니다.` });
-      if (!isEditMode) reset();
+      if (!isEditMode) {
+        reset();
+        setPreviews([null, null, null]);
+      }
 
       router.refresh();
-      if (isEditMode) {
-        setTimeout(() => router.push('/admin/arrest-news'), 1500);
-      }
+      setTimeout(() => {
+        if (isEditMode) {
+          router.push('/admin/arrest-news');
+        }
+      }, 1500);
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setMessage({ type: 'error', text: errorMessage });
     }
   };
+
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="p-6 bg-white rounded-lg shadow-md space-y-4">
@@ -159,12 +220,16 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         <input id="category" {...register('category')} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900" placeholder="(카테고리를 적어주세요. #소식공유 #검거완료 #신종범죄)"/>
       </div>
       <div>
-        <label htmlFor="content" className="block text_sm font-medium text-gray-700">내용</label>
+        <label htmlFor="content" className="block text-sm font-medium text-gray-700">내용</label>
         <textarea id="content" rows={10} {...register('content')} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"/>
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">대표 이미지 {isEditMode && '(변경할 경우에만 업로드)'}</label>
-        <ImageUpload register={register} watch={watch} setValue={setValue} initialImageUrls={initialData?.image_urls || []}/>
+        <ImageUpload
+          register={register}
+          previews={previews}
+          onRemove={handleRemoveImage}
+        />
       </div>
       <div>
         <label htmlFor="link_url" className="block text-sm font-medium text-gray-700">링크 URL (선택 사항)</label>
@@ -173,9 +238,8 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
           type="text"
           placeholder="예: www.tiktok.com/..., youtube.com/shorts/..., instagram.com/..."
           {...register('link_url', {
-            // ✅ 정규식 대신 normalizeUrl 기반 검증
             validate: (v) => {
-              if (!v) return true;                // 비어있으면 통과
+              if (!v) return true;
               return normalizeUrl(v) ? true : '올바른 URL 형식이 아닙니다.';
             }
           })}
@@ -184,7 +248,7 @@ export default function ArrestNewsForm({ initialData }: ArrestNewsFormProps) {
         {errors.link_url && <p className="mt-1 text-sm text-red-600">{errors.link_url.message}</p>}
       </div>
       <div>
-        <label htmlFor="author_name" className="block text-sm font_medium text-gray-700">작성자</label>
+        <label htmlFor="author_name" className="block text-sm font-medium text-gray-700">작성자</label>
         <input id="author_name" {...register('author_name')} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm text-gray-900"/>
       </div>
       <div className="flex items-center">

@@ -5,13 +5,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import LogoutButton from '@/components/LogoutButton';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
-import { usePathname } from 'next/navigation'; // usePathname 훅을 import합니다.
+import { usePathname } from 'next/navigation';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const pathname = usePathname(); // 현재 경로를 가져옵니다.
+  const pathname = usePathname();
 
-  const navLinks = [
+  // shortLabel 제거 → label만 사용
+  const navLinks: { href: string; label: string }[] = [
     { href: '/admin', label: '홈' },
     { href: '/admin/notices', label: '공지사항 관리' },
     { href: '/admin/arrest-news', label: '검거소식 관리' },
@@ -29,17 +30,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: '/admin/partners', label: '제휴사 관리' },
   ];
 
+  const isActivePath = (href: string) =>
+    href === '/admin' ? pathname === href : pathname.startsWith(href);
+
   return (
     <div className="relative flex min-h-screen bg-gray-100">
-      {/* Sidebar Overlay for mobile */}
+      {/* Overlay for mobile */}
       {isSidebarOpen && (
-        <div
+        <button
+          aria-label="메뉴 닫기"
           className="fixed inset-0 z-20 bg-black bg-opacity-50 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
-        ></div>
+        />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar (원래 width/패딩 유지) */}
       <aside
         className={`fixed inset-y-0 left-0 z-30 w-64 p-6 text-white bg-gray-800 shadow-md transform ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -50,23 +55,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <button
             onClick={() => setIsSidebarOpen(false)}
             className="md:hidden text-white"
+            aria-label="메뉴 닫기"
           >
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
-        <nav className="flex-grow">
-          <ul className="space-y-2">
+
+        {/* 모바일: 8행 × 2열 그리드 (버튼 스타일/크기 = 원래대로) */}
+        <nav className="md:hidden">
+          <ul className="grid grid-cols-2 grid-rows-8 gap-2">
             {navLinks.map((link) => {
-              // 현재 경로가 해당 링크로 시작하는지 확인 (하위 경로 활성화를 위해)
-              const isActive = link.href === '/admin' ? pathname === link.href : pathname.startsWith(link.href);
+              const active = isActivePath(link.href);
               return (
                 <li key={link.href}>
                   <Link
                     href={link.href}
                     onClick={() => setIsSidebarOpen(false)}
-                    className={`block py-2 px-3 rounded transition-colors duration-200 ${
-                      isActive ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700 hover:text-indigo-300'
-                    }`}
+                    className={[
+                      'block py-2 px-3 rounded transition-colors duration-200',
+                      active
+                        ? 'bg-indigo-600 text-white'
+                        : 'hover:bg-gray-700 hover:text-indigo-300',
+                    ].join(' ')}
+                    aria-current={active ? 'page' : undefined}
                   >
                     {link.label}
                   </Link>
@@ -75,6 +86,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             })}
           </ul>
         </nav>
+
+        {/* 데스크톱: 기존 세로 리스트 */}
+        <nav className="hidden md:block flex-grow">
+          <ul className="space-y-2">
+            {navLinks.map((link) => {
+              const active = isActivePath(link.href);
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className={[
+                      'block py-2 px-3 rounded transition-colors duration-200',
+                      active
+                        ? 'bg-indigo-600 text-white'
+                        : 'hover:bg-gray-700 hover:text-indigo-300',
+                    ].join(' ')}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
         <div className="mt-auto pt-6">
           <LogoutButton />
         </div>
@@ -87,15 +124,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="text-gray-600"
+            aria-label="메뉴 열기"
           >
             <Bars3Icon className="w-6 h-6" />
           </button>
           <span className="text-xl font-semibold text-gray-800">크레딧톡</span>
         </header>
 
-        <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-          {children}
-        </main>
+        <main className="flex-1 p-6 md:p-10 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

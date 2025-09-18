@@ -62,23 +62,33 @@ export async function PUT(
       content,
       category,
       link_url,
+      image_urls: image_urls || [],
     };
 
     const BUCKET_NAME = 'post-images';
 
-    if (image_urls && Array.isArray(image_urls)) {
-      const { data: currentPost } = await supabaseAdmin.from('community_posts').select('image_urls').eq('id', id).single();
-      if (currentPost?.image_urls && currentPost.image_urls.length > 0) {
-        const oldImagePaths = currentPost.image_urls.map((url: string) => {
-          try { return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1]; }
-          catch { return null; }
+    const { data: currentPost } = await supabaseAdmin.from('community_posts').select('image_urls').eq('id', id).single();
+
+    if (currentPost) {
+      const oldImageUrls: string[] = currentPost.image_urls || [];
+      const newImageUrls: string[] = updates.image_urls || [];
+
+      const urlsToDelete = oldImageUrls.filter((url: string) => !newImageUrls.includes(url));
+
+      if (urlsToDelete.length > 0) {
+        const oldImagePaths = urlsToDelete.map((url: string) => {
+          try {
+            return new URL(url).pathname.split(`/v1/object/public/${BUCKET_NAME}/`)[1];
+          }
+          catch {
+            return null;
+          }
         }).filter(Boolean);
 
         if (oldImagePaths.length > 0) {
           await supabaseAdmin.storage.from(BUCKET_NAME).remove(oldImagePaths as string[]);
         }
       }
-      updates.image_urls = image_urls;
     }
 
     const { error } = await supabaseAdmin
