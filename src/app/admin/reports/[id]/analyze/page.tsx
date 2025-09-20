@@ -12,7 +12,7 @@ interface ScammerReport {
   category: string;
   description: string | null;
   nickname: string | null;
-  reporter_id: string | null;       // ✅ 신고자 UUID(auth.users.id)
+  reporter_id: string | null;
   reporter_email: string | null;
 
   damage_amount: number | null;
@@ -34,6 +34,7 @@ interface ScammerReport {
 
   nickname_evidence_url: string | null;
   traded_item_image_urls: string[] | null;
+  illegal_collection_evidence_urls: string[] | null;
 
   analysis_result: string | null;
   analysis_message: string | null;
@@ -120,15 +121,12 @@ export default function AnalyzeReportPage() {
     }
   };
 
-  // ✅ 저장 성공 후 푸시 발송
   async function notifyReporterSafe() {
     try {
-      // 푸시 타이틀/본문 구성 (본문은 너무 길지 않게 잘라서)
       const pushTitle = '사기 신고 분석이 완료되었습니다';
       const preview = (analysisMessage || selectedAnalysisResult || '').toString().trim();
       const pushBody = preview.length > 120 ? `${preview.slice(0, 117)}…` : preview || '앱에서 결과를 확인해 주세요.';
 
-      // reporter_id( UUID )가 있으면 가장 정확함, 없으면 reportId로 서버에 위임
       const target = report?.reporter_id
         ? { authUserId: report.reporter_id }
         : { reportId: Number(reportId) };
@@ -136,11 +134,11 @@ export default function AnalyzeReportPage() {
       await fetch('/api/push/notify-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // 관리자 세션 쿠키 포함
+        credentials: 'include',
         body: JSON.stringify({
           title: pushTitle,
           body: pushBody,
-          data: { screen: 'MyReports' }, // 사용자가 앱에서 확인할 화면
+          data: { screen: 'MyReports' },
           target,
         }),
       });
@@ -157,11 +155,10 @@ export default function AnalyzeReportPage() {
     }
     setIsSubmitting(true);
     try {
-      // 1) 분석 결과 저장
       const response = await fetch(`/api/admin/reports/${reportId}/analyze`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // ✅ 세션 포함(중요)
+        credentials: 'include',
         body: JSON.stringify({
           analysis_result: selectedAnalysisResult,
           analysis_message: analysisMessage,
@@ -172,11 +169,10 @@ export default function AnalyzeReportPage() {
         throw new Error(errData?.error || 'Failed to update analysis.');
       }
 
-      // 2) 저장 성공 → 작성자 1명에게만 푸시
       await notifyReporterSafe();
 
       alert('분석 결과가 성공적으로 저장되었습니다.');
-      await fetchReportDetails(); // 최신 정보로 갱신
+      await fetchReportDetails();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류 발생';
       alert(`오류: ${errorMessage}`);
@@ -191,6 +187,13 @@ export default function AnalyzeReportPage() {
 
   const currentAnalysisOptions =
     analysisOptionsData[report.category as keyof typeof analysisOptionsData] || [];
+
+  const allEvidenceUrls = [
+    ...(report.nickname_evidence_url ? [report.nickname_evidence_url] : []),
+    ...(report.illegal_collection_evidence_urls || []),
+    ...(report.traded_item_image_urls || [])
+  ].filter(Boolean);
+
 
   return (
     <div className="container mx-auto p-0 md:p-4">
@@ -219,6 +222,18 @@ export default function AnalyzeReportPage() {
         <InfoItem label="사칭된 연락처" value={report.impersonated_phone_number} />
         <InfoItem label="사이트 명" value={report.site_name} />
       </InfoSection>
+
+      {allEvidenceUrls.length > 0 && (
+        <InfoSection title="증거 자료">
+          <div className="md:col-span-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {allEvidenceUrls.map((url, index) => (
+              <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="aspect-w-1 aspect-h-1">
+                <img src={url} alt={`증거 자료 ${index + 1}`} className="w-full h-full object-cover rounded-lg shadow-md hover:opacity-80 transition-opacity" />
+              </a>
+            ))}
+          </div>
+        </InfoSection>
+      )}
 
       <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6">
         <h2 className="text-xl font-semibold mb-4">분석 입력</h2>

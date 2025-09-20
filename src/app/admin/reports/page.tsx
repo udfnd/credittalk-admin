@@ -22,6 +22,9 @@ interface ReportSummary {
   damage_amount: number | null;
   site_name: string | null;
   reporter_email: string | null;
+  nickname_evidence_url: string | null;
+  illegal_collection_evidence_urls: string[] | null;
+  traded_item_image_urls: string[] | null;
 }
 
 export default function ReportListPage() {
@@ -30,7 +33,6 @@ export default function ReportListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 페이지네이션 상태
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
@@ -47,7 +49,7 @@ export default function ReportListPage() {
     const { data, error: fetchError, count } = await supabase
       .from('admin_scammer_reports_view')
       .select('*', { count: 'exact' })
-      .eq('attempted_fraud', false) // 서버 쿼리 단계에서 필터
+      .eq('attempted_fraud', false)
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -68,7 +70,6 @@ export default function ReportListPage() {
     fetchReports();
   }, [fetchReports]);
 
-  // 삭제 후 현재 페이지 데이터 갱신 (마지막 항목 삭제로 페이지가 비면 한 페이지 당겨줌)
   const handleDelete = async (reportId: number) => {
     if (
       window.confirm(
@@ -84,14 +85,12 @@ export default function ReportListPage() {
           throw new Error((await response.text()) || '신고 삭제에 실패했습니다.');
         }
 
-        // 낙관적 업데이트
         setReports(prev => prev.filter(r => r.id !== reportId));
         setTotalCount(prev => Math.max(0, prev - 1));
 
-        // 현재 페이지가 비었으면 한 페이지 앞으로 이동
         setTimeout(() => {
           setPage(prev => {
-            const remaining = totalCount - 1; // 방금 삭제 반영
+            const remaining = totalCount - 1;
             const newTotalPages = Math.max(1, Math.ceil(remaining / pageSize));
             return Math.min(prev, newTotalPages);
           });
@@ -131,7 +130,7 @@ export default function ReportListPage() {
             className="border rounded px-2 py-1 text-sm"
             value={pageSize}
             onChange={(e) => {
-              setPage(1); // 페이지 크기 변경 시 첫 페이지로
+              setPage(1);
               setPageSize(Number(e.target.value));
             }}
           >
@@ -154,6 +153,7 @@ export default function ReportListPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
               <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">미리보기</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">신고일</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">신고자(닉네임)</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">카테고리</th>
@@ -165,48 +165,63 @@ export default function ReportListPage() {
               </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-              {reports.map(report => (
-                <tr key={report.id}>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(report.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                    <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
-                      {report.nickname || 'N/A'}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.category}</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderArray(report.phone_numbers)}</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderAccounts(report.damage_accounts)}</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm">
-                    {report.analysis_result ? (
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+              {reports.map(report => {
+                const firstImage =
+                  report.nickname_evidence_url ||
+                  report.illegal_collection_evidence_urls?.[0] ||
+                  report.traded_item_image_urls?.[0];
+
+                return (
+                  <tr key={report.id}>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {firstImage ? (
+                        <a href={firstImage} target="_blank" rel="noopener noreferrer">
+                          <img src={firstImage} alt="증거 자료 썸네일" className="w-16 h-16 object-cover rounded shadow-sm"/>
+                        </a>
+                      ) : (
+                        <div className="w-16 h-16 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400">No Img</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(report.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                      <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
+                        {report.nickname || 'N/A'}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{report.category}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {report.damage_amount ? `${report.damage_amount.toLocaleString()}원` : '피해액 없음'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderArray(report.phone_numbers)}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{renderAccounts(report.damage_accounts)}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                      {report.analysis_result ? (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                           {report.analysis_result}
                         </span>
-                    ) : (
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                      ) : (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
                           미분석
                         </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium space-x-4">
-                    <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
-                      분석/수정
-                    </Link>
-                    <button onClick={() => handleDelete(report.id)} className="text-red-600 hover:text-red-900">
-                      삭제
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                      <Link href={`/admin/reports/${report.id}/analyze`} className="text-indigo-600 hover:text-indigo-900">
+                        분석/수정
+                      </Link>
+                      <button onClick={() => handleDelete(report.id)} className="text-red-600 hover:text-red-900">
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
               </tbody>
             </table>
           </div>
 
-          {/* 페이지네이션 바 */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 mt-4">
             <div className="text-sm text-gray-600">
               전체 <b>{totalCount.toLocaleString()}</b>건 · 페이지 <b>{page}</b>/<b>{totalPages}</b>
