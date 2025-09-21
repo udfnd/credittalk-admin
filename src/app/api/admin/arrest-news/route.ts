@@ -4,23 +4,20 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 
-async function isAdmin(): Promise<boolean> {
+async function getAdminUser() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { data, error } = await supabase.rpc('is_current_user_admin');
-  if (error) {
-    console.error("Admin check failed in arrest-news API:", error);
-    return false;
-  }
-  return data === true;
+  if (!user) return null;
+  const { data: isAdmin } = await supabase.rpc('is_current_user_admin');
+  if (!isAdmin) return null;
+  return user;
 }
 
 export async function GET() {
-  if (!(await isAdmin())) {
-    return new NextResponse('Unauthorized', { status: 401 });
+  const adminUser = await getAdminUser();
+  if (!adminUser) {
+    return new NextResponse(JSON.stringify({ message: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
 
   try {
@@ -39,8 +36,9 @@ export async function GET() {
 
 // 새로운 검거소식 생성
 export async function POST(request: NextRequest) {
-  if (!(await isAdmin())) {
-    return new NextResponse('Unauthorized', { status: 401 });
+  const adminUser = await getAdminUser();
+  if (!adminUser) {
+    return new NextResponse(JSON.stringify({ message: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
   }
 
   try {
@@ -59,6 +57,7 @@ export async function POST(request: NextRequest) {
         is_published,
         image_urls: image_urls && image_urls.length > 0 ? image_urls : null,
         link_url,
+        user_id: adminUser.id,
       })
       .select()
       .single();
