@@ -1,6 +1,7 @@
+// src/app/admin/new-crime-cases/page.tsx
 'use client';
 
-import { useEffect, useState, Fragment, useRef } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import CommentForm from '@/components/CommentForm';
@@ -8,62 +9,12 @@ import CommentForm from '@/components/CommentForm';
 interface NewCrimeCase {
   id: number;
   created_at: string;
-  title: string;
+  title: string; // [수정됨] title 필드 추가
   method: string;
   is_published: boolean;
   views: number;
   is_pinned: boolean;
 }
-
-// ✨ '작업' 메뉴를 위한 드롭다운 컴포넌트 추가
-const ActionMenu = ({ item, onPinToggle, onEdit, onDelete, onComment }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // 메뉴 외부 클릭 시 닫히도록 하는 로직
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleActionClick = (action: () => void) => {
-    action();
-    setIsOpen(false);
-  };
-
-  return (
-    <div className="relative inline-block text-left" ref={menuRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-      >
-        작업
-        <svg className="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
-          <div className="py-1" role="menu" aria-orientation="vertical">
-            <button onClick={() => handleActionClick(onComment)} className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900">답글 달기</button>
-            <button onClick={() => handleActionClick(() => onPinToggle(item.id, item.is_pinned))} className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900">
-              {item.is_pinned ? '고정 해제' : '상단 고정'}
-            </button>
-            <Link href={`/admin/new-crime-cases/${item.id}/edit`} onClick={() => setIsOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900">수정</Link>
-            <button onClick={() => handleActionClick(() => onDelete(item.id))} className="w-full text-left block px-4 py-2 text-sm text-red-700 hover:bg-gray-100 hover:text-red-900">삭제</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 
 export default function ManageNewCrimeCasesPage() {
   const supabase = createClientComponentClient();
@@ -135,8 +86,7 @@ export default function ManageNewCrimeCasesPage() {
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">조회수</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성일</th>
-            {/* ✨ '작업' 컬럼의 너비를 고정하여 공간을 확보합니다. */}
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">작업</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
           </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
@@ -158,15 +108,15 @@ export default function ManageNewCrimeCasesPage() {
                 </td>
                 <td data-label="조회수" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.views}</td>
                 <td data-label="작성일" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.created_at).toLocaleDateString()}</td>
-                <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  {/* ✨ 기존 버튼들을 ActionMenu 컴포넌트로 대체합니다. */}
-                  <ActionMenu
-                    item={item}
-                    onPinToggle={handlePinToggle}
-                    onDelete={handleDelete}
-                    onComment={() => setOpenCommentFormId(openCommentFormId === item.id ? null : item.id)}
-                    onEdit={() => {}} // Link는 ActionMenu 내부에서 처리
-                  />
+                <td data-label="작업" className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                  <button onClick={() => setOpenCommentFormId(openCommentFormId === item.id ? null : item.id)} className="text-green-600 hover:text-green-900">
+                    답글 달기
+                  </button>
+                  <button onClick={() => handlePinToggle(item.id, item.is_pinned)} className="text-blue-600 hover:text-blue-900">
+                    {item.is_pinned ? '고정 해제' : '상단 고정'}
+                  </button>
+                  <Link href={`/admin/new-crime-cases/${item.id}/edit`} className="text-indigo-600 hover:text-indigo-900">수정</Link>
+                  <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
                 </td>
               </tr>
               {openCommentFormId === item.id && (
