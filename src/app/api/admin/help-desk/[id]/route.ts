@@ -23,10 +23,10 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
-  // view 대신 원본 테이블에서 모든 정보를 조회하도록 변경
+  // ✨ 핵심 변경: users 테이블에서 nickname을 함께 조회하도록 select문 수정
   const { data: question, error: questionError } = await supabaseAdmin
-    .from('help_questions') // `help_questions_with_author` view 대신 `help_questions` 테이블 직접 조회
-    .select('*') // 모든 컬럼 선택
+    .from('help_questions')
+    .select('*, users(nickname)') // users 테이블의 nickname을 함께 가져옵니다.
     .eq('id', id)
     .single();
 
@@ -34,7 +34,6 @@ export async function GET(
     return new NextResponse(`Question not found: ${questionError.message}`, { status: 404 });
   }
 
-  // 답변 조회 (기존과 동일)
   const { data: answer, error: answerError } = await supabaseAdmin
     .from('help_answers')
     .select('*')
