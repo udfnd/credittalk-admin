@@ -62,7 +62,6 @@ export default function ManageHelpDeskPage() {
       const publishedQuestionIds = new Set(crimeCases.map(c => c.source_help_question_id));
 
       // 3. 두 데이터를 조합하여 최종 상태(HelpQuestion)를 만듭니다.
-      // `q`의 타입이 HelpQuestionFromRPC로 추론되므로 더 이상 `any`가 필요 없습니다.
       const processedData: HelpQuestion[] = questionsData.map(q => ({
         ...q,
         is_published_as_crime_case: publishedQuestionIds.has(q.id),
@@ -71,7 +70,6 @@ export default function ManageHelpDeskPage() {
       setQuestions(processedData);
 
     } catch (err) {
-      // `any` 대신 `unknown` 타입을 안전하게 처리
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error("Error fetching questions:", errorMessage);
       setError("문의 목록을 불러오는 데 실패했습니다.");
@@ -87,6 +85,7 @@ export default function ManageHelpDeskPage() {
   const handlePublishChange = async (questionId: number, event: ChangeEvent<HTMLSelectElement>) => {
     const shouldPublish = event.target.value === 'true';
 
+    // UI 즉시 업데이트
     setQuestions(prev =>
       prev.map(q =>
         q.id === questionId ? { ...q, is_published_as_crime_case: shouldPublish } : q
@@ -94,33 +93,30 @@ export default function ManageHelpDeskPage() {
     );
 
     try {
-      if (shouldPublish) {
-        const questionToPublish = questions.find(q => q.id === questionId);
-        if (!questionToPublish) throw new Error("해당 문의 정보를 찾을 수 없습니다.");
+      // 클라이언트 DB 직접 호출 대신 API 라우트 호출
+      const response = await fetch(`/api/admin/help-desk/${questionId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publish: shouldPublish }),
+      });
 
-        const { error } = await supabase.from('new_crime_cases').insert({
-          source_help_question_id: questionId,
-          title: questionToPublish.title || '공개된 상담 사례',
-          method: questionToPublish.case_summary || questionToPublish.content || '내용 없음',
-          user_id: questionToPublish.user_id,
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('new_crime_cases')
-          .delete()
-          .eq('source_help_question_id', questionId);
-        if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '공개 상태 변경에 실패했습니다.');
       }
+
       alert(`성공적으로 ${shouldPublish ? '공개' : '비공개'} 처리되었습니다.`);
+      // 성공 시 목록을 다시 불러와 최신 상태를 유지합니다.
+      await fetchQuestions();
+
     } catch (err) {
-      // `any` 대신 `unknown` 타입을 안전하게 처리
       const errorMessage = err instanceof Error ? err.message : String(err);
       alert(`오류가 발생했습니다: ${errorMessage}`);
       // 실패 시 UI를 원래대로 되돌리기 위해 데이터를 다시 불러옵니다.
       fetchQuestions();
     }
   };
+
 
   if (isLoading) return <p className="text-center py-8">문의 목록을 불러오는 중...</p>;
   if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
