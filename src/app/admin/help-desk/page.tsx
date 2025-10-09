@@ -1,7 +1,7 @@
 // /src/app/admin/help-desk/page.tsx
 'use client';
 
-import { useEffect, useState, ChangeEvent } from 'react';
+import { useEffect, useState, ChangeEvent, useCallback } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
@@ -10,10 +10,14 @@ interface HelpQuestion {
   id: number;
   created_at: string;
   title: string | null;
-  case_summary: string | null; // case_summary 추가
+  case_summary: string | null;
   is_answered: boolean;
-  author_name: string | null;
+  // author_name 대신 user_name을 직접 사용하도록 변경 (RPC가 반환)
+  user_name: string | null;
   is_published_as_crime_case: boolean;
+  // 공개 기능에 필요한 필드 추가
+  content: string | null;
+  user_id: string;
 }
 
 export default function ManageHelpDeskPage() {
@@ -22,96 +26,95 @@ export default function ManageHelpDeskPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchQuestions = async () => {
+  // 데이터 조회 로직을 RPC 중심으로 효율적으로 재구성
+  const fetchQuestions = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // 1. `help_questions_with_author` 뷰를 사용하여 기본 데이터를 안정적으로 가져옵니다.
-      //    (단, is_answered, case_summary는 없으므로 별도로 가져와야 합니다)
-      const { data: viewData, error: viewError } = await supabase
-        .from('help_questions_with_author')
-        .select('id, created_at, title, author_name')
+      // 1. RPC를 호출하여 질문 목록과 정확한 '답변 여부(is_answered)'를 한 번에 가져옵니다.
+      const { data: questionsData, error: rpcError } = await supabase
+        .rpc('get_help_questions_with_status')
         .order('created_at', { ascending: false });
 
-      if (viewError) throw viewError;
-      if (!viewData) {
+      if (rpcError) throw rpcError;
+
+      if (!questionsData || questionsData.length === 0) {
         setQuestions([]);
-        setIsLoading(false);
         return;
       }
 
-      const questionIds = viewData.map(q => q.id);
+      const questionIds = questionsData.map((q: { id: number }) => q.id);
 
-      // 2. недостающие данные (`case_summary`, 공개 여부, 답변 여부)를 별도로 가져옵니다.
-      // 2-1. `case_summary` 가져오기
-      const { data: summaryData, error: summaryError } = await supabase
-        .from('help_questions')
-        .select('id, case_summary')
-        .in('id', questionIds);
-      if (summaryError) throw summaryError;
-      const summaryMap = new Map(summaryData.map(item => [item.id, item.case_summary]));
-
-      // 2-2. 공개 여부(new_crime_cases) 정보 가져오기
+      // 2. '공개 여부' 정보만 추가로 가져옵니다.
       const { data: crimeCases, error: crimeCaseError } = await supabase
         .from('new_crime_cases')
         .select('source_help_question_id')
         .in('source_help_question_id', questionIds);
+
       if (crimeCaseError) throw crimeCaseError;
+
       const publishedQuestionIds = new Set(crimeCases.map(c => c.source_help_question_id));
 
-      // 2-3. 답변 여부(admin comments) 정보 가져오기
-      const { data: adminComments, error: commentsError } = await supabase
-        .from('help_desk_comments')
-        .select('question_id, users!inner(is_admin)')
-        .eq('users.is_admin', true)
-        .in('question_id', questionIds);
-      if (commentsError) throw commentsError;
-      const answeredQuestionIds = new Set(adminComments.map(c => c.question_id));
-
-      // 3. 모든 데이터를 안전하게 조합합니다.
-      const processedData = viewData.map(q => ({
+      // 3. 두 데이터를 조합하여 최종 상태를 만듭니다.
+      const processedData = questionsData.map((q: any) => ({
         ...q,
-        case_summary: summaryMap.get(q.id) || null,
         is_published_as_crime_case: publishedQuestionIds.has(q.id),
-        is_answered: answeredQuestionIds.has(q.id),
       }));
 
       setQuestions(processedData);
 
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
-      console.error("Error fetching questions:", errorMessage);
-      setError("문의 목록을 불러오는 데 실패했습니다. 콘솔 로그를 확인하세요.");
+    } catch (err: any) {
+      console.error("Error fetching questions:", err.message);
+      setError("문의 목록을 불러오는 데 실패했습니다.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     fetchQuestions();
-  }, [supabase]);
+  }, [fetchQuestions]);
 
   const handlePublishChange = async (questionId: number, event: ChangeEvent<HTMLSelectElement>) => {
     const shouldPublish = event.target.value === 'true';
 
     setQuestions(prev =>
-      prev.map(q =>
+      prev.map((q: HelpQuestion) =>
         q.id === questionId ? { ...q, is_published_as_crime_case: shouldPublish } : q
       )
     );
 
-    const { error: rpcError } = shouldPublish
-      ? await supabase.from('new_crime_cases').insert({ source_help_question_id: questionId })
-      : await supabase.from('new_crime_cases').delete().eq('source_help_question_id', questionId);
+    try {
+      if (shouldPublish) {
+        // 공개할 질문의 상세 정보 찾기
+        const questionToPublish = questions.find((q: HelpQuestion) => q.id === questionId);
+        if (!questionToPublish) throw new Error("해당 문의 정보를 찾을 수 없습니다.");
 
-    if (rpcError) {
+        // new_crime_cases 테이블의 NOT NULL 제약조건을 만족시키기 위해 필요한 값들을 함께 insert
+        const { error } = await supabase.from('new_crime_cases').insert({
+          source_help_question_id: questionId,
+          title: questionToPublish.title || '공개된 상담 사례',
+          method: questionToPublish.case_summary || questionToPublish.content || '내용 없음',
+          user_id: questionToPublish.user_id,
+        });
+        if (error) throw error;
+      } else {
+        // 비공개 처리
+        const { error } = await supabase
+          .from('new_crime_cases')
+          .delete()
+          .eq('source_help_question_id', questionId);
+        if (error) throw error;
+      }
+      alert(`성공적으로 ${shouldPublish ? '공개' : '비공개'} 처리되었습니다.`);
+    } catch (rpcError: any) {
       alert(`오류가 발생했습니다: ${rpcError.message}`);
+      // 실패 시 UI를 원래대로 되돌리기 위해 데이터를 다시 불러옵니다.
       fetchQuestions();
-    } else {
-      alert(`문의가 성공적으로 ${shouldPublish ? '공개' : '비공개'} 처리되었습니다.`);
     }
   };
+
 
   if (isLoading) return <p className="text-center py-8">문의 목록을 불러오는 중...</p>;
   if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
@@ -124,7 +127,7 @@ export default function ManageHelpDeskPage() {
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목 (사건 개요)</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">공개 여부</th>
@@ -133,14 +136,15 @@ export default function ManageHelpDeskPage() {
           </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
-          {questions.map(q => (
+          {questions.map((q: HelpQuestion) => (
             <tr key={q.id}>
               <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 <Link href={`/admin/help-desk/${q.id}`} className="hover:text-indigo-600">
-                  {q.case_summary || q.title || '내용 없음'}
+                  {q.title || '내용 없음'}
                 </Link>
               </td>
-              <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{q.author_name}</td>
+              {/* RPC가 반환하는 user_name 필드를 사용 */}
+              <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{q.user_name || '익명'}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {q.is_answered
                   ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">답변 완료</span>
