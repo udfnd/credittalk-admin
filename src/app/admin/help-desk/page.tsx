@@ -5,6 +5,10 @@ import { useEffect, useState, ChangeEvent, useCallback } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
+// Supabase RPC 호출로 받아오는 데이터의 타입을 명확하게 정의
+// is_published_as_crime_case는 클라이언트에서 추가되므로 제외
+type HelpQuestionFromRPC = Omit<HelpQuestion, 'is_published_as_crime_case'>;
+
 // 최종적으로 UI에 표시될 데이터 타입
 interface HelpQuestion {
   id: number;
@@ -12,10 +16,8 @@ interface HelpQuestion {
   title: string | null;
   case_summary: string | null;
   is_answered: boolean;
-  // author_name 대신 user_name을 직접 사용하도록 변경 (RPC가 반환)
   user_name: string | null;
   is_published_as_crime_case: boolean;
-  // 공개 기능에 필요한 필드 추가
   content: string | null;
   user_id: string;
 }
@@ -32,19 +34,22 @@ export default function ManageHelpDeskPage() {
     setError(null);
 
     try {
-      // 1. RPC를 호출하여 질문 목록과 정확한 '답변 여부(is_answered)'를 한 번에 가져옵니다.
-      const { data: questionsData, error: rpcError } = await supabase
+      // 1. RPC를 호출하여 질문 목록과 '답변 여부(is_answered)'를 한 번에 가져옵니다.
+      const { data: rpcData, error: rpcError } = await supabase
         .rpc('get_help_questions_with_status')
         .order('created_at', { ascending: false });
 
       if (rpcError) throw rpcError;
+
+      // rpcData의 타입을 HelpQuestionFromRPC 배열로 명확히 지정
+      const questionsData = rpcData as HelpQuestionFromRPC[];
 
       if (!questionsData || questionsData.length === 0) {
         setQuestions([]);
         return;
       }
 
-      const questionIds = questionsData.map((q: { id: number }) => q.id);
+      const questionIds = questionsData.map(q => q.id);
 
       // 2. '공개 여부' 정보만 추가로 가져옵니다.
       const { data: crimeCases, error: crimeCaseError } = await supabase
@@ -56,16 +61,19 @@ export default function ManageHelpDeskPage() {
 
       const publishedQuestionIds = new Set(crimeCases.map(c => c.source_help_question_id));
 
-      // 3. 두 데이터를 조합하여 최종 상태를 만듭니다.
-      const processedData = questionsData.map((q: any) => ({
+      // 3. 두 데이터를 조합하여 최종 상태(HelpQuestion)를 만듭니다.
+      // `q`의 타입이 HelpQuestionFromRPC로 추론되므로 더 이상 `any`가 필요 없습니다.
+      const processedData: HelpQuestion[] = questionsData.map(q => ({
         ...q,
         is_published_as_crime_case: publishedQuestionIds.has(q.id),
       }));
 
       setQuestions(processedData);
 
-    } catch (err: any) {
-      console.error("Error fetching questions:", err.message);
+    } catch (err) {
+      // `any` 대신 `unknown` 타입을 안전하게 처리
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error("Error fetching questions:", errorMessage);
       setError("문의 목록을 불러오는 데 실패했습니다.");
     } finally {
       setIsLoading(false);
@@ -80,18 +88,16 @@ export default function ManageHelpDeskPage() {
     const shouldPublish = event.target.value === 'true';
 
     setQuestions(prev =>
-      prev.map((q: HelpQuestion) =>
+      prev.map(q =>
         q.id === questionId ? { ...q, is_published_as_crime_case: shouldPublish } : q
       )
     );
 
     try {
       if (shouldPublish) {
-        // 공개할 질문의 상세 정보 찾기
-        const questionToPublish = questions.find((q: HelpQuestion) => q.id === questionId);
+        const questionToPublish = questions.find(q => q.id === questionId);
         if (!questionToPublish) throw new Error("해당 문의 정보를 찾을 수 없습니다.");
 
-        // new_crime_cases 테이블의 NOT NULL 제약조건을 만족시키기 위해 필요한 값들을 함께 insert
         const { error } = await supabase.from('new_crime_cases').insert({
           source_help_question_id: questionId,
           title: questionToPublish.title || '공개된 상담 사례',
@@ -100,7 +106,6 @@ export default function ManageHelpDeskPage() {
         });
         if (error) throw error;
       } else {
-        // 비공개 처리
         const { error } = await supabase
           .from('new_crime_cases')
           .delete()
@@ -108,13 +113,14 @@ export default function ManageHelpDeskPage() {
         if (error) throw error;
       }
       alert(`성공적으로 ${shouldPublish ? '공개' : '비공개'} 처리되었습니다.`);
-    } catch (rpcError: any) {
-      alert(`오류가 발생했습니다: ${rpcError.message}`);
+    } catch (err) {
+      // `any` 대신 `unknown` 타입을 안전하게 처리
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(`오류가 발생했습니다: ${errorMessage}`);
       // 실패 시 UI를 원래대로 되돌리기 위해 데이터를 다시 불러옵니다.
       fetchQuestions();
     }
   };
-
 
   if (isLoading) return <p className="text-center py-8">문의 목록을 불러오는 중...</p>;
   if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
@@ -136,14 +142,13 @@ export default function ManageHelpDeskPage() {
           </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
-          {questions.map((q: HelpQuestion) => (
+          {questions.map((q) => (
             <tr key={q.id}>
               <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 <Link href={`/admin/help-desk/${q.id}`} className="hover:text-indigo-600">
                   {q.title || '내용 없음'}
                 </Link>
               </td>
-              {/* RPC가 반환하는 user_name 필드를 사용 */}
               <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{q.user_name || '익명'}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {q.is_answered
