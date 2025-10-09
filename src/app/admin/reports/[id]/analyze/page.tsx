@@ -14,6 +14,9 @@ interface ScammerReport {
   nickname: string | null;
   reporter_id: string | null;
   reporter_email: string | null;
+  // ✨ 신고자 이름 및 연락처 필드 추가
+  reporter_name: string | null;
+  reporter_phone: string | null;
 
   damage_amount: number | null;
   no_damage_amount: boolean | null;
@@ -202,8 +205,11 @@ export default function AnalyzeReportPage() {
       <InfoSection title="핵심 정보">
         <InfoItem label="신고 카테고리" value={<span className="font-bold text-lg text-red-600">{report.category}</span>} />
         <InfoItem label="신고일" value={new Date(report.created_at).toLocaleString()} />
-        <InfoItem label="신고자 닉네임" value={report.nickname} />
+        {/* ✨ 신고자 정보 표시 */}
+        <InfoItem label="신고자 이름" value={report.reporter_name} />
+        <InfoItem label="신고자 연락처" value={report.reporter_phone} />
         <InfoItem label="신고자 이메일" value={report.reporter_email} />
+        <InfoItem label="신고자 닉네임" value={report.nickname} />
       </InfoSection>
 
       <InfoSection title="피해 정보">

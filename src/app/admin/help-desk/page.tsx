@@ -1,19 +1,18 @@
-// src/app/admin/help-desk/page.tsx
+// /src/app/admin/help-desk/page.tsx
 'use client';
 
 import { useEffect, useState, ChangeEvent } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-interface HelpQuestionFromDB {
+// 최종적으로 UI에 표시될 데이터 타입
+interface HelpQuestion {
   id: number;
   created_at: string;
-  title: string;
-  author_name: string;
+  title: string | null;
+  case_summary: string | null; // case_summary 추가
   is_answered: boolean;
-}
-
-interface HelpQuestion extends HelpQuestionFromDB {
+  author_name: string | null;
   is_published_as_crime_case: boolean;
 }
 
@@ -27,42 +26,66 @@ export default function ManageHelpDeskPage() {
     setIsLoading(true);
     setError(null);
 
-    // 1. 기존 뷰에서 문의 목록을 먼저 가져옵니다.
-    const { data: helpData, error: fetchError } = await supabase
-      .from('help_questions_with_author')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      // 1. `help_questions_with_author` 뷰를 사용하여 기본 데이터를 안정적으로 가져옵니다.
+      //    (단, is_answered, case_summary는 없으므로 별도로 가져와야 합니다)
+      const { data: viewData, error: viewError } = await supabase
+        .from('help_questions_with_author')
+        .select('id, created_at, title, author_name')
+        .order('created_at', { ascending: false });
 
-    if (fetchError) {
-      console.error("Error fetching questions:", fetchError);
-      setError("문의 목록을 불러오는 데 실패했습니다.");
+      if (viewError) throw viewError;
+      if (!viewData) {
+        setQuestions([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const questionIds = viewData.map(q => q.id);
+
+      // 2. недостающие данные (`case_summary`, 공개 여부, 답변 여부)를 별도로 가져옵니다.
+      // 2-1. `case_summary` 가져오기
+      const { data: summaryData, error: summaryError } = await supabase
+        .from('help_questions')
+        .select('id, case_summary')
+        .in('id', questionIds);
+      if (summaryError) throw summaryError;
+      const summaryMap = new Map(summaryData.map(item => [item.id, item.case_summary]));
+
+      // 2-2. 공개 여부(new_crime_cases) 정보 가져오기
+      const { data: crimeCases, error: crimeCaseError } = await supabase
+        .from('new_crime_cases')
+        .select('source_help_question_id')
+        .in('source_help_question_id', questionIds);
+      if (crimeCaseError) throw crimeCaseError;
+      const publishedQuestionIds = new Set(crimeCases.map(c => c.source_help_question_id));
+
+      // 2-3. 답변 여부(admin comments) 정보 가져오기
+      const { data: adminComments, error: commentsError } = await supabase
+        .from('help_desk_comments')
+        .select('question_id, users!inner(is_admin)')
+        .eq('users.is_admin', true)
+        .in('question_id', questionIds);
+      if (commentsError) throw commentsError;
+      const answeredQuestionIds = new Set(adminComments.map(c => c.question_id));
+
+      // 3. 모든 데이터를 안전하게 조합합니다.
+      const processedData = viewData.map(q => ({
+        ...q,
+        case_summary: summaryMap.get(q.id) || null,
+        is_published_as_crime_case: publishedQuestionIds.has(q.id),
+        is_answered: answeredQuestionIds.has(q.id),
+      }));
+
+      setQuestions(processedData);
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
+      console.error("Error fetching questions:", errorMessage);
+      setError("문의 목록을 불러오는 데 실패했습니다. 콘솔 로그를 확인하세요.");
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    // 2. new_crime_cases 테이블에서 공개된 문의 ID 목록을 가져옵니다.
-    const { data: crimeCases, error: crimeCaseError } = await supabase
-      .from('new_crime_cases')
-      .select('source_help_question_id')
-      .not('source_help_question_id', 'is', null);
-
-    if (crimeCaseError) {
-      console.error("Error fetching published cases:", crimeCaseError);
-      setError("공개된 사례 정보를 불러오는 데 실패했습니다.");
-      setIsLoading(false);
-      return;
-    }
-
-    const publishedQuestionIds = new Set(crimeCases.map(c => c.source_help_question_id));
-
-    // 3. 두 데이터를 조합하여 최종 상태를 결정합니다.
-    const processedData = helpData.map(q => ({
-      ...q,
-      is_published_as_crime_case: publishedQuestionIds.has(q.id),
-    }));
-
-    setQuestions(processedData as HelpQuestion[]);
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -72,35 +95,27 @@ export default function ManageHelpDeskPage() {
   const handlePublishChange = async (questionId: number, event: ChangeEvent<HTMLSelectElement>) => {
     const shouldPublish = event.target.value === 'true';
 
-    try {
-      const response = await fetch(`/api/admin/help-desk/${questionId}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publish: shouldPublish }),
-      });
+    setQuestions(prev =>
+      prev.map(q =>
+        q.id === questionId ? { ...q, is_published_as_crime_case: shouldPublish } : q
+      )
+    );
 
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
+    const { error: rpcError } = shouldPublish
+      ? await supabase.from('new_crime_cases').insert({ source_help_question_id: questionId })
+      : await supabase.from('new_crime_cases').delete().eq('source_help_question_id', questionId);
 
-      // 상태 변경 성공 시, UI를 즉시 업데이트
-      setQuestions(prevQuestions =>
-        prevQuestions.map(q =>
-          q.id === questionId ? { ...q, is_published_as_crime_case: shouldPublish } : q
-        )
-      );
-      alert(`문의가 성공적으로 ${shouldPublish ? '공개' : '비공개'} 처리되었습니다.`);
-
-    } catch (err) {
-      alert(`오류가 발생했습니다: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      // 실패 시 원래 상태로 되돌리기 위해 목록을 다시 불러옵니다.
+    if (rpcError) {
+      alert(`오류가 발생했습니다: ${rpcError.message}`);
       fetchQuestions();
+    } else {
+      alert(`문의가 성공적으로 ${shouldPublish ? '공개' : '비공개'} 처리되었습니다.`);
     }
   };
 
-
   if (isLoading) return <p className="text-center py-8">문의 목록을 불러오는 중...</p>;
   if (error) return <p className="text-center text-red-500 py-8">오류: {error}</p>;
+  if (!isLoading && questions.length === 0) return <p className="text-center py-8">문의 내역이 없습니다.</p>;
 
   return (
     <div className="container mx-auto p-0 md:p-4">
@@ -109,7 +124,7 @@ export default function ManageHelpDeskPage() {
         <table className="min-w-full divide-y divide-gray-200 responsive-table">
           <thead className="bg-gray-50">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">제목 (사건 개요)</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작성자</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">공개 여부</th>
@@ -120,8 +135,12 @@ export default function ManageHelpDeskPage() {
           <tbody className="bg-white divide-y divide-gray-200 md:divide-y-0">
           {questions.map(q => (
             <tr key={q.id}>
-              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><Link href={`/admin/help-desk/${q.id}`} className="hover:text-indigo-600">{q.title}</Link></td>
-              <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{q.author_name || 'N/A'}</td>
+              <td data-label="제목" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <Link href={`/admin/help-desk/${q.id}`} className="hover:text-indigo-600">
+                  {q.case_summary || q.title || '내용 없음'}
+                </Link>
+              </td>
+              <td data-label="작성자" className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{q.author_name}</td>
               <td data-label="상태" className="px-6 py-4 whitespace-nowrap text-sm">
                 {q.is_answered
                   ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">답변 완료</span>
