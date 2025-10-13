@@ -19,16 +19,38 @@ export async function GET() {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('users')
-      .select('created_at')
-      .order('created_at', { ascending: true });
+    const allUsers: { created_at: string }[] = [];
+    const PAGE_SIZE = 1000;
+    let page = 0;
 
-    if (error) throw error;
+    // FIX: Supabase의 1,000개 조회 제한을 해결하기 위해 페이지네이션으로 모든 데이터를 가져옵니다.
+    while (true) {
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('created_at')
+        .order('created_at', { ascending: true })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    const dailySignUps = data.reduce((acc, user) => {
-      const date = new Date(user.created_at).toISOString().split('T')[0];
-      acc[date] = (acc[date] || 0) + 1;
+      if (error) throw error;
+
+      if (data) {
+        allUsers.push(...data);
+      }
+
+      // 가져온 데이터가 페이지 크기보다 작으면 마지막 페이지이므로 루프를 중단합니다.
+      if (!data || data.length < PAGE_SIZE) {
+        break;
+      }
+
+      page++;
+    }
+
+    const dailySignUps = allUsers.reduce((acc, user) => {
+      // created_at 값이 유효한 경우에만 집계합니다.
+      if (user.created_at) {
+        const date = new Date(user.created_at).toISOString().split('T')[0];
+        acc[date] = (acc[date] || 0) + 1;
+      }
       return acc;
     }, {} as Record<string, number>);
 
