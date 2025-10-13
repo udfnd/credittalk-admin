@@ -9,10 +9,6 @@ interface SignUpStat {
   count: number;
 }
 
-interface ChartData extends SignUpStat {
-  total: number;
-}
-
 export default function SignUpStatsPage() {
   const [stats, setStats] = useState<SignUpStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
