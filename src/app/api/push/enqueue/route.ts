@@ -79,7 +79,7 @@ async function isAdmin() {
 
 function loadServiceAccount(): ServiceAccountCredentials {
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
-  if (b4) return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+  if (b64) return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64');
   return JSON.parse(raw);
@@ -107,7 +107,45 @@ type SendResult =
   | { ok: true; id?: string }
   | { ok: false; status?: number; code?: string; msg?: string; unregistered?: boolean };
 
-// ▶︎ 링크가 있으면 "data-only", 없으면 "notification" 전송
+/* ========= FCM v1 Message 타입들 (any 금지) ========= */
+type AndroidNotification = {
+  channel_id?: string;
+  image?: string;
+};
+
+type AndroidConfig = {
+  priority?: 'NORMAL' | 'HIGH';
+  notification?: AndroidNotification;
+};
+
+type ApnsAps = {
+  'content-available'?: 1;
+  // 필요 시 확장: badge?: number; sound?: string;
+} & Record<string, unknown>;
+
+type ApnsPayload = {
+  aps?: ApnsAps;
+};
+
+type ApnsConfig = {
+  payload?: ApnsPayload;
+};
+
+type NotificationPayload = {
+  title?: string;
+  body?: string;
+  image?: string;
+};
+
+interface FcmV1Message {
+  token: string;
+  data?: Record<string, string>;
+  notification?: NotificationPayload;
+  android?: AndroidConfig;
+  apns?: ApnsConfig;
+}
+
+/* ========= 링크가 있으면 "data-only", 없으면 "notification" 전송 ========= */
 async function sendToTokenV1(
   client: AuthClient,
   url: string,
@@ -122,7 +160,7 @@ async function sendToTokenV1(
     data.image = payload.imageUrl;
   }
 
-  const message: Record<string, unknown> = {
+  const message: FcmV1Message = {
     token,
     data,
     android: { priority: 'HIGH' },
@@ -130,17 +168,21 @@ async function sendToTokenV1(
 
   if (hasLink) {
     // data-only → OS 시스템 알림 생성 X (앱이 1개만 표시)
-    message['apns'] = { payload: { aps: { 'content-available': 1 } } };
+    message.apns = { payload: { aps: { 'content-available': 1 } } };
   } else {
     // 링크가 없으면 시스템 알림(이미지 포함 가능) 1개만
-    message['notification'] = {
+    message.notification = {
       title: payload.title,
       body: payload.body,
       ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
     };
-    (message['android'] as any).notification = {
-      channel_id: ANDROID_CHANNEL_ID,
-      ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+
+    message.android = {
+      ...(message.android ?? {}),
+      notification: {
+        channel_id: ANDROID_CHANNEL_ID,
+        ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+      },
     };
   }
 
@@ -165,6 +207,7 @@ function pickLatestTokenPerUser(rows: DeviceTokenRow[]): string[] {
     if (!prev) { byUser.set(r.user_id, r); continue; }
     if (new Date(r.last_seen).getTime() > new Date(prev.last_seen).getTime()) byUser.set(r.user_id, r);
   }
+  // 토큰 문자열 기준 중복 제거
   return Array.from(new Set(Array.from(byUser.values()).map(v => v.token))).filter(Boolean);
 }
 
