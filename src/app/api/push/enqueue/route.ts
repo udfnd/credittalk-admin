@@ -1,4 +1,3 @@
-// src/app/api/push/enqueue/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
@@ -80,7 +79,7 @@ async function isAdmin() {
 
 function loadServiceAccount(): ServiceAccountCredentials {
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
-  if (b64) return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+  if (b4) return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64');
   return JSON.parse(raw);
@@ -108,6 +107,7 @@ type SendResult =
   | { ok: true; id?: string }
   | { ok: false; status?: number; code?: string; msg?: string; unregistered?: boolean };
 
+// ▶︎ 링크가 있으면 "data-only", 없으면 "notification" 전송
 async function sendToTokenV1(
   client: AuthClient,
   url: string,
@@ -115,17 +115,34 @@ async function sendToTokenV1(
   payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string }
 ): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
-  if (payload.imageUrl) data.image = payload.imageUrl;
+  const hasLink = typeof data.link_url === 'string' && data.link_url.length > 0;
+
+  if (payload.imageUrl) {
+    // 앱 로컬 알림에서도 이미지 사용 가능하도록 data에도 심어줌
+    data.image = payload.imageUrl;
+  }
 
   const message: Record<string, unknown> = {
     token,
-    notification: { title: payload.title, body: payload.body, ...(payload.imageUrl ? { image: payload.imageUrl } : {}) },
     data,
-    android: { priority: 'HIGH', notification: { channel_id: ANDROID_CHANNEL_ID, ...(payload.imageUrl ? { image: payload.imageUrl } : {}) } },
-    ...(payload.imageUrl
-      ? { apns: { payload: { aps: { 'mutable-content': 1 } }, fcm_options: { image: payload.imageUrl } } }
-      : {}),
+    android: { priority: 'HIGH' },
   };
+
+  if (hasLink) {
+    // data-only → OS 시스템 알림 생성 X (앱이 1개만 표시)
+    message['apns'] = { payload: { aps: { 'content-available': 1 } } };
+  } else {
+    // 링크가 없으면 시스템 알림(이미지 포함 가능) 1개만
+    message['notification'] = {
+      title: payload.title,
+      body: payload.body,
+      ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+    };
+    (message['android'] as any).notification = {
+      channel_id: ANDROID_CHANNEL_ID,
+      ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
+    };
+  }
 
   try {
     const res = await client.request<{ name?: string }>({ url, method: 'POST', data: { message } });
@@ -146,10 +163,8 @@ function pickLatestTokenPerUser(rows: DeviceTokenRow[]): string[] {
   for (const r of rows) {
     const prev = byUser.get(r.user_id);
     if (!prev) { byUser.set(r.user_id, r); continue; }
-    // 최신 last_seen 우선
     if (new Date(r.last_seen).getTime() > new Date(prev.last_seen).getTime()) byUser.set(r.user_id, r);
   }
-  // 토큰 문자열 기준 중복 제거(혹시 동일 토큰이 여러 유저에 잘못 매핑된 경우 대비)
   return Array.from(new Set(Array.from(byUser.values()).map(v => v.token))).filter(Boolean);
 }
 
@@ -169,7 +184,7 @@ export async function POST(request: NextRequest) {
     // 3) 대상 토큰 수집 (enabled = true)
     let q = supabaseAdmin
       .from('device_push_tokens')
-      .select('token, platform, user_id, last_seen') // ⬅️ user_id, last_seen 포함
+      .select('token, platform, user_id, last_seen')
       .eq('enabled', true);
 
     if (Array.isArray(targetUserIds) && targetUserIds.length) q = q.in('user_id', targetUserIds);
@@ -178,10 +193,9 @@ export async function POST(request: NextRequest) {
     if (tokensErr) throw tokensErr;
 
     const rows = (tokensRows ?? []) as DeviceTokenRow[];
-    // ✅ 핵심: 유저당 최신 1토큰만 추출
     const tokens = pickLatestTokenPerUser(rows);
 
-    // 4) push_jobs 레코드 생성
+    // 4) push_jobs 레코드 생성 (image도 data에 남겨 추적)
     const mergedData =
       data && typeof data === 'object'
         ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
