@@ -1,3 +1,4 @@
+// src/app/api/push/enqueue/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
@@ -28,6 +29,8 @@ interface ServiceAccountCredentials {
 interface DeviceTokenRow {
   token: string;
   platform?: string | null;
+  user_id: string;
+  last_seen: string; // ISO timestamp
 }
 
 type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
@@ -53,18 +56,13 @@ interface EnqueueRequestBody {
   data?: Record<string, unknown> | null;
   audience?: Record<string, unknown> | null;
   targetUserIds?: Array<Uuid | number>;
-  imageUrl?: string; // ⬅️ 이미지 URL(선택)
+  imageUrl?: string;
 }
 
 interface FcmErrorShape {
   response?: {
     status?: number;
-    data?: {
-      error?: {
-        status?: string;
-        message?: string;
-      };
-    };
+    data?: { error?: { status?: string; message?: string } };
   };
   message?: string;
 }
@@ -82,13 +80,10 @@ async function isAdmin() {
 
 function loadServiceAccount(): ServiceAccountCredentials {
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
-  if (b64) {
-    const json = Buffer.from(b64, 'base64').toString('utf8');
-    return JSON.parse(json) as ServiceAccountCredentials;
-  }
+  if (b64) return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64');
-  return JSON.parse(raw) as ServiceAccountCredentials;
+  return JSON.parse(raw);
 }
 
 async function getFcmHttpClient(): Promise<{ client: AuthClient; url: string }> {
@@ -101,13 +96,11 @@ async function getFcmHttpClient(): Promise<{ client: AuthClient; url: string }> 
   return { client, url };
 }
 
-// FCM data는 모두 문자열이어야 함
+// FCM data는 문자열만 허용
 function normalizeDataPayload(data?: Record<string, unknown> | null): Record<string, string> {
   if (!data || typeof data !== 'object') return {};
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data)) {
-    out[k] = typeof v === 'string' ? v : JSON.stringify(v);
-  }
+  for (const [k, v] of Object.entries(data)) out[k] = typeof v === 'string' ? v : JSON.stringify(v);
   return out;
 }
 
@@ -119,52 +112,23 @@ async function sendToTokenV1(
   client: AuthClient,
   url: string,
   token: string,
-  payload: {
-    title: string;
-    body: string;
-    data?: Record<string, unknown> | null;
-    imageUrl?: string;
-  }
+  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string }
 ): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
-  if (payload.imageUrl) {
-    // 포어그라운드 Notifee 표시용
-    data.image = payload.imageUrl;
-  }
+  if (payload.imageUrl) data.image = payload.imageUrl;
 
-  // HTTP v1 메시지
   const message: Record<string, unknown> = {
     token,
-    notification: {
-      title: payload.title,
-      body: payload.body,
-      ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
-    },
+    notification: { title: payload.title, body: payload.body, ...(payload.imageUrl ? { image: payload.imageUrl } : {}) },
     data,
-    android: {
-      priority: 'HIGH',
-      notification: {
-        channel_id: ANDROID_CHANNEL_ID,
-        ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
-      },
-    },
-    // iOS 고려 시(지금 안 써도 무해)
+    android: { priority: 'HIGH', notification: { channel_id: ANDROID_CHANNEL_ID, ...(payload.imageUrl ? { image: payload.imageUrl } : {}) } },
     ...(payload.imageUrl
-      ? {
-        apns: {
-          payload: { aps: { 'mutable-content': 1 } },
-          fcm_options: { image: payload.imageUrl },
-        },
-      }
+      ? { apns: { payload: { aps: { 'mutable-content': 1 } }, fcm_options: { image: payload.imageUrl } } }
       : {}),
   };
 
   try {
-    const res = await client.request<{ name?: string }>({
-      url,
-      method: 'POST',
-      data: { message },
-    });
+    const res = await client.request<{ name?: string }>({ url, method: 'POST', data: { message } });
     return { ok: true, id: res.data?.name };
   } catch (e: unknown) {
     const err = e as FcmErrorShape;
@@ -176,6 +140,19 @@ async function sendToTokenV1(
   }
 }
 
+/** 유저 기준으로 최신(last_seen) 1개 토큰만 유지 */
+function pickLatestTokenPerUser(rows: DeviceTokenRow[]): string[] {
+  const byUser = new Map<string, DeviceTokenRow>();
+  for (const r of rows) {
+    const prev = byUser.get(r.user_id);
+    if (!prev) { byUser.set(r.user_id, r); continue; }
+    // 최신 last_seen 우선
+    if (new Date(r.last_seen).getTime() > new Date(prev.last_seen).getTime()) byUser.set(r.user_id, r);
+  }
+  // 토큰 문자열 기준 중복 제거(혹시 동일 토큰이 여러 유저에 잘못 매핑된 경우 대비)
+  return Array.from(new Set(Array.from(byUser.values()).map(v => v.token))).filter(Boolean);
+}
+
 export async function POST(request: NextRequest) {
   // 1) 관리자 인증
   const auth = await isAdmin();
@@ -185,7 +162,6 @@ export async function POST(request: NextRequest) {
     // 2) 입력 파싱
     const parsed = (await request.json().catch(() => ({}))) as Partial<EnqueueRequestBody>;
     const { title, body: message, data, audience, targetUserIds, imageUrl } = parsed;
-
     if (!title || !String(title).trim() || !message || !String(message).trim()) {
       return new NextResponse('title and body are required', { status: 400 });
     }
@@ -193,26 +169,23 @@ export async function POST(request: NextRequest) {
     // 3) 대상 토큰 수집 (enabled = true)
     let q = supabaseAdmin
       .from('device_push_tokens')
-      .select('token, platform')
+      .select('token, platform, user_id, last_seen') // ⬅️ user_id, last_seen 포함
       .eq('enabled', true);
 
-    if (Array.isArray(targetUserIds) && targetUserIds.length) {
-      q = q.in('user_id', targetUserIds);
-    }
+    if (Array.isArray(targetUserIds) && targetUserIds.length) q = q.in('user_id', targetUserIds);
 
     const { data: tokensRows, error: tokensErr } = await q;
     if (tokensErr) throw tokensErr;
 
     const rows = (tokensRows ?? []) as DeviceTokenRow[];
-    const tokens = Array.from(new Set(rows.map((r) => r.token))).filter(Boolean);
+    // ✅ 핵심: 유저당 최신 1토큰만 추출
+    const tokens = pickLatestTokenPerUser(rows);
 
-    // 4) push_jobs 레코드 생성 (processing) — data에 image도 함께 남겨 추적
+    // 4) push_jobs 레코드 생성
     const mergedData =
       data && typeof data === 'object'
         ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
-        : imageUrl
-          ? { image: imageUrl }
-          : null;
+        : imageUrl ? { image: imageUrl } : null;
 
     const { data: jobRowRaw, error: insErr } = await supabaseAdmin
       .from('push_jobs')
@@ -230,14 +203,11 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
     if (insErr) throw insErr;
-
     const jobRow = jobRowRaw as PushJobRow;
 
-    // 5) HTTP v1 전송
+    // 5) FCM v1 발송
     const { client, url } = await getFcmHttpClient();
-
-    let sent = 0;
-    let failed = 0;
+    let sent = 0, failed = 0;
     const dead: string[] = [];
 
     const BATCH = 100;
@@ -246,46 +216,30 @@ export async function POST(request: NextRequest) {
       const results = await Promise.allSettled(
         chunk.map((t) => sendToTokenV1(client, url, t, { title, body: message, data: data ?? null, imageUrl }))
       );
-
       results.forEach((r, idx) => {
         if (r.status === 'fulfilled') {
-          if (r.value.ok) {
-            sent += 1;
-          } else {
-            failed += 1;
-            if (r.value.unregistered) dead.push(chunk[idx]);
-          }
-        } else {
-          failed += 1;
-        }
+          if (r.value.ok) sent += 1;
+          else { failed += 1; if (r.value.unregistered) dead.push(chunk[idx]); }
+        } else failed += 1;
       });
     }
 
     // 6) 무효 토큰 비활성화
-    if (dead.length) {
-      await supabaseAdmin.from('device_push_tokens').update({ enabled: false }).in('token', dead);
-    }
+    if (dead.length) await supabaseAdmin.from('device_push_tokens').update({ enabled: false }).in('token', dead);
 
-    // 7) 결과 저장 (done)
+    // 7) 결과 저장
     const { data: updatedRaw, error: updErr } = await supabaseAdmin
       .from('push_jobs')
       .update({
         status: 'done',
-        result: {
-          dry_run: false,
-          total: tokens.length,
-          sent,
-          failed,
-          disabled_tokens: dead.length,
-        },
+        result: { dry_run: false, total: tokens.length, sent, failed, disabled_tokens: dead.length },
       })
       .eq('id', jobRow.id)
       .select()
       .single();
     if (updErr) throw updErr;
 
-    const updated = updatedRaw as PushJobRow;
-    return NextResponse.json({ ok: true, job: updated });
+    return NextResponse.json({ ok: true, job: updatedRaw as PushJobRow });
   } catch (err: unknown) {
     const msg = (err as { message?: string }).message ?? 'unknown error';
     console.error('push/enqueue v1 error:', msg);
