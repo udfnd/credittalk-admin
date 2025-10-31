@@ -155,8 +155,14 @@ async function sendToTokenV1(
   const data = normalizeDataPayload(payload.data ?? {});
   const hasLink = typeof data.link_url === 'string' && data.link_url.length > 0;
 
+  // ⬇⬇⬇ 추가: data-only로 갈 때 로컬 알림이 쓸 수 있도록 title/body를 data에 포함
+  if (hasLink) {
+    if (!data.title) data.title = String(payload.title ?? '');
+    if (!data.body)  data.body  = String(payload.body ?? '');
+  }
+
   if (payload.imageUrl) {
-    // 앱 로컬 알림에서도 이미지 사용 가능하도록 data에도 심어줌
+    // 알림 이미지가 로컬 알림에서도 필요하면 data에도 심어둠
     data.image = payload.imageUrl;
   }
 
@@ -167,16 +173,15 @@ async function sendToTokenV1(
   };
 
   if (hasLink) {
-    // data-only → OS 시스템 알림 생성 X (앱이 1개만 표시)
+    // data-only (중복 알림 방지 목적)
     message.apns = { payload: { aps: { 'content-available': 1 } } };
   } else {
-    // 링크가 없으면 시스템 알림(이미지 포함 가능) 1개만
+    // 시스템 알림 1장
     message.notification = {
       title: payload.title,
-      body: payload.body,
+      body:  payload.body,
       ...(payload.imageUrl ? { image: payload.imageUrl } : {}),
     };
-
     message.android = {
       ...(message.android ?? {}),
       notification: {
