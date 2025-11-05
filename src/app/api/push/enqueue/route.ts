@@ -1,3 +1,5 @@
+// app/api/push/enqueue/route.ts
+
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
@@ -25,9 +27,11 @@ interface ServiceAccountCredentials {
   universe_domain?: string;
 }
 
+type Platform = 'android' | 'ios' | null;
+
 interface DeviceTokenRow {
   token: string;
-  platform?: string | null;
+  platform: Platform;
   user_id: string;
   last_seen: string; // ISO timestamp
 }
@@ -89,7 +93,7 @@ async function getFcmHttpClient(): Promise<{ client: AuthClient; url: string }> 
   const creds = loadServiceAccount();
   const auth = new GoogleAuth({ credentials: creds, scopes: [FCM_SCOPE] });
   const client = await auth.getClient();
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.FIREBASE_PROJECT_ID || creds.project_id;
   if (!projectId) throw new Error('Missing FIREBASE_PROJECT_ID');
   const url = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
   return { client, url };
@@ -103,11 +107,6 @@ function normalizeDataPayload(data?: Record<string, unknown> | null): Record<str
   return out;
 }
 
-type SendResult =
-  | { ok: true; id?: string }
-  | { ok: false; status?: number; code?: string; msg?: string; unregistered?: boolean };
-
-/* ========= FCM v1 Message 타입들 (any 금지) ========= */
 type AndroidNotification = {
   channel_id?: string;
   image?: string;
@@ -120,7 +119,6 @@ type AndroidConfig = {
 
 type ApnsAps = {
   'content-available'?: 1;
-  // 필요 시 확장: badge?: number; sound?: string;
 } & Record<string, unknown>;
 
 type ApnsPayload = {
@@ -145,14 +143,28 @@ interface FcmV1Message {
   apns?: ApnsConfig;
 }
 
+type SendResult =
+  | { ok: true; id?: string }
+  | { ok: false; status?: number; code?: string; msg?: string; unregistered?: boolean };
+
+/**
+ * forceDataOnly === true 인 경우 Android 포그라운드 onMessage 안정 보장
+ */
 async function sendToTokenV1(
   client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string }
+  payload: {
+    title: string;
+    body: string;
+    data?: Record<string, unknown> | null;
+    imageUrl?: string;
+    forceDataOnly?: boolean;
+  }
 ): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
   const hasLink = typeof data.link_url === 'string' && data.link_url.length > 0;
+  const forceDataOnly = payload.forceDataOnly === true;
 
   if (!data.title) data.title = String(payload.title ?? '');
   if (!data.body)  data.body  = String(payload.body ?? '');
@@ -164,19 +176,19 @@ async function sendToTokenV1(
     android: { priority: 'HIGH' },
   };
 
-  if (hasLink) {
+  if (hasLink || forceDataOnly) {
+    // ✅ data-only (Android 포그라운드 안정)
+    // iOS의 알림 배지는 필요 시 apns.aps에 설정
     message.apns = {
       payload: {
         aps: {
-          alert: {
-            title: payload.title,
-            body:  payload.body,
-          },
-          'mutable-content': payload.imageUrl ? 1 : undefined,
+          alert: { title: payload.title, body: payload.body },
+          ...(payload.imageUrl ? { 'mutable-content': 1 } : {}),
         } as ApnsAps,
       },
     };
   } else {
+    // (iOS에서 OS 자동표시를 활용하려면 유지 가능)
     message.notification = {
       title: payload.title,
       body:  payload.body,
@@ -204,32 +216,34 @@ async function sendToTokenV1(
   }
 }
 
-/** 유저 기준으로 최신(last_seen) 1개 토큰만 유지 */
-function pickLatestTokenPerUser(rows: DeviceTokenRow[]): string[] {
+/** 유저 기준 최신 1개 토큰 유지 + 플랫폼 보존 */
+function pickLatestTokenPerUser(rows: DeviceTokenRow[]): Array<{ token: string; platform: Platform }> {
   const byUser = new Map<string, DeviceTokenRow>();
   for (const r of rows) {
     const prev = byUser.get(r.user_id);
-    if (!prev) { byUser.set(r.user_id, r); continue; }
-    if (new Date(r.last_seen).getTime() > new Date(prev.last_seen).getTime()) byUser.set(r.user_id, r);
+    if (!prev || new Date(r.last_seen).getTime() > new Date(prev.last_seen).getTime()) {
+      byUser.set(r.user_id, r);
+    }
   }
-  // 토큰 문자열 기준 중복 제거
-  return Array.from(new Set(Array.from(byUser.values()).map(v => v.token))).filter(Boolean);
+  const uniq = new Map<string, { token: string; platform: Platform }>();
+  for (const v of byUser.values()) {
+    uniq.set(v.token, { token: v.token, platform: v.platform ?? null });
+  }
+  return Array.from(uniq.values());
 }
 
 export async function POST(request: NextRequest) {
-  // 1) 관리자 인증
   const auth = await isAdmin();
   if (!auth.ok || !auth.user) return new NextResponse('Unauthorized', { status: 401 });
 
   try {
-    // 2) 입력 파싱
     const parsed = (await request.json().catch(() => ({}))) as Partial<EnqueueRequestBody>;
     const { title, body: message, data, audience, targetUserIds, imageUrl } = parsed;
     if (!title || !String(title).trim() || !message || !String(message).trim()) {
       return new NextResponse('title and body are required', { status: 400 });
     }
 
-    // 3) 대상 토큰 수집 (enabled = true)
+    // 대상 토큰 (enabled=true)
     let q = supabaseAdmin
       .from('device_push_tokens')
       .select('token, platform, user_id, last_seen')
@@ -243,7 +257,7 @@ export async function POST(request: NextRequest) {
     const rows = (tokensRows ?? []) as DeviceTokenRow[];
     const tokens = pickLatestTokenPerUser(rows);
 
-    // 4) push_jobs 레코드 생성 (image도 data에 남겨 추적)
+    // push_jobs 기록
     const mergedData =
       data && typeof data === 'object'
         ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
@@ -267,7 +281,7 @@ export async function POST(request: NextRequest) {
     if (insErr) throw insErr;
     const jobRow = jobRowRaw as PushJobRow;
 
-    // 5) FCM v1 발송
+    // FCM v1 발송 (Android → data-only 강제)
     const { client, url } = await getFcmHttpClient();
     let sent = 0, failed = 0;
     const dead: string[] = [];
@@ -276,20 +290,26 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < tokens.length; i += BATCH) {
       const chunk = tokens.slice(i, i + BATCH);
       const results = await Promise.allSettled(
-        chunk.map((t) => sendToTokenV1(client, url, t, { title, body: message, data: data ?? null, imageUrl }))
+        chunk.map(({ token, platform }) =>
+          sendToTokenV1(client, url, token, {
+            title,
+            body: message,
+            data: data ?? null,
+            imageUrl,
+            forceDataOnly: platform === 'android', // 🔑 핵심
+          })
+        )
       );
       results.forEach((r, idx) => {
         if (r.status === 'fulfilled') {
           if (r.value.ok) sent += 1;
-          else { failed += 1; if (r.value.unregistered) dead.push(chunk[idx]); }
+          else { failed += 1; if (r.value.unregistered) dead.push(chunk[idx].token); }
         } else failed += 1;
       });
     }
 
-    // 6) 무효 토큰 비활성화
     if (dead.length) await supabaseAdmin.from('device_push_tokens').update({ enabled: false }).in('token', dead);
 
-    // 7) 결과 저장
     const { data: updatedRaw, error: updErr } = await supabaseAdmin
       .from('push_jobs')
       .update({
