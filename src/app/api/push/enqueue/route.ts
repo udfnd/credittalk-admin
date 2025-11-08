@@ -127,17 +127,27 @@ interface FcmV1Message {
   apns?: ApnsConfig;
 }
 
+// Android: 항상 data-only
+// iOS: link 있을 때만 data-only (앱 하나만 열리게)
+// 기타/미상: link 있을 때만 data-only
+function decideWantDataOnly(platform: string | null | undefined, hasLink: boolean): boolean {
+  const p = (platform || '').toLowerCase();
+  if (p === 'android') return true;
+  if (p === 'ios') return hasLink;
+  return hasLink;
+}
+
 function buildMessage(params: {
   token: string;
   title: string;
   body: string;
   data?: Record<string, string>;
   imageUrl?: string;
-  silent?: boolean; // data-only 강제 옵션
+  wantDataOnly: boolean;
 }): FcmV1Message {
-  const { token, title, body, data = {}, imageUrl, silent } = params;
+  const { token, title, body, data = {}, imageUrl, wantDataOnly } = params;
 
-  // 항상 data에 기본 필드 포함 (클릭 핸들링/로깅용)
+  // 항상 data에 기본 필드 포함 (클릭 핸들링/로깅/포그라운드 표시용)
   const dataPayload: Record<string, string> = {
     ...data,
     title: data.title ?? String(title ?? ''),
@@ -145,8 +155,6 @@ function buildMessage(params: {
     ...(imageUrl ? { image: imageUrl } : {}),
     nid: data.nid ?? String(Date.now()), // 클라 디듀프용
   };
-
-  const wantDataOnly = Boolean(silent && silent === true);
 
   const message: FcmV1Message = {
     token,
@@ -180,7 +188,7 @@ function buildMessage(params: {
       },
     };
   } else {
-    // 진짜 무음 data-only
+    // 진짜 무음 data-only (Android에는 OS 헤더 무시)
     message.android = { priority: 'HIGH' };
     message.apns = {
       headers: {
@@ -207,10 +215,25 @@ async function sendToTokenV1(
   client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string; silent?: boolean },
+  payload: {
+    title: string;
+    body: string;
+    data?: Record<string, unknown> | null;
+    imageUrl?: string;
+    platform?: string | null;
+  },
 ): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
-  const message = buildMessage({ token, title: payload.title, body: payload.body, data, imageUrl: payload.imageUrl, silent: payload.silent });
+  const hasLink = typeof data.link_url === 'string' && data.link_url.length > 0;
+  const wantDataOnly = decideWantDataOnly(payload.platform ?? null, hasLink);
+  const message = buildMessage({
+    token,
+    title: payload.title,
+    body: payload.body,
+    data,
+    imageUrl: payload.imageUrl,
+    wantDataOnly,
+  });
 
   try {
     const res = await client.request<{ name?: string }>({ url, method: 'POST', data: { message } });
@@ -229,7 +252,13 @@ async function sendWithRetry(
   client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string; silent?: boolean },
+  payload: {
+    title: string;
+    body: string;
+    data?: Record<string, unknown> | null;
+    imageUrl?: string;
+    platform?: string | null;
+  },
   attempts = 3,
 ): Promise<SendResult> {
   let last: SendResult | null = null;
@@ -243,16 +272,23 @@ async function sendWithRetry(
   return last ?? { ok: false, msg: 'unknown error' };
 }
 
-/** 유저 기준 최신(last_seen || created_at) 1개 토큰만 유지 */
-function pickLatestTokenPerUser(rows: DeviceTokenRow[]): string[] {
+/** 유저 기준 최신(last_seen || created_at) 1개 토큰만 유지 — platform 보존 */
+function pickLatestTokenPerUser(
+  rows: DeviceTokenRow[],
+): Array<{ token: string; platform?: string | null }> {
   const byUser = new Map<string, DeviceTokenRow>();
   for (const r of rows) {
     const t = new Date(r.last_seen ?? r.created_at ?? 0).getTime();
     const prev = byUser.get(r.user_id);
-    if (!prev || t > new Date(prev.last_seen ?? prev.created_at ?? 0).getTime()) byUser.set(r.user_id, r);
+    if (!prev || t > new Date(prev.last_seen ?? prev.created_at ?? 0).getTime()) {
+      byUser.set(r.user_id, r);
+    }
   }
-  // 토큰 문자열 기준 중복 제거 + 유효성 필터
-  return Array.from(new Set(Array.from(byUser.values()).map(v => v.token))).filter(t => typeof t === 'string' && t.trim().length > 0);
+  const uniq = new Map<string, { token: string; platform?: string | null }>();
+  for (const v of byUser.values()) {
+    if (v.token) uniq.set(v.token, { token: v.token, platform: v.platform ?? null });
+  }
+  return Array.from(uniq.values());
 }
 
 export async function POST(request: NextRequest) {
@@ -266,7 +302,7 @@ export async function POST(request: NextRequest) {
       return new NextResponse('title and body are required', { status: 400 });
     }
 
-    // 대상 토큰 수집
+    // 대상 토큰 수집 (enabled만)
     let q = supabaseAdmin
       .from('device_push_tokens')
       .select('token, platform, user_id, last_seen, created_at')
@@ -277,13 +313,15 @@ export async function POST(request: NextRequest) {
     if (tokensErr) throw tokensErr;
 
     const rows = (tokensRows ?? []) as DeviceTokenRow[];
-    const tokens = pickLatestTokenPerUser(rows);
+    const tokens = pickLatestTokenPerUser(rows); // [{token, platform}]
 
-    // push_jobs 생성
+    // push_jobs 생성 (image도 data에 남겨 추적)
     const mergedData =
       data && typeof data === 'object'
         ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
-        : imageUrl ? { image: imageUrl } : null;
+        : imageUrl
+          ? { image: imageUrl }
+          : null;
 
     const { data: jobRowRaw, error: insErr } = await supabaseAdmin
       .from('push_jobs')
@@ -312,13 +350,13 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < tokens.length; i += BATCH) {
       const chunk = tokens.slice(i, i + BATCH);
       const results = await Promise.allSettled(
-        chunk.map((t) =>
-          sendWithRetry(client, url, t, {
+        chunk.map(({ token, platform }) =>
+          sendWithRetry(client, url, token, {
             title,
             body: message,
             data: data ?? null,
             imageUrl,
-            // silent: true  // 필요시 강제 무음
+            platform,
           }),
         ),
       );
@@ -328,7 +366,7 @@ export async function POST(request: NextRequest) {
           if (v.ok) sent += 1;
           else {
             failed += 1;
-            if (v.unregistered) dead.push(chunk[idx]);
+            if (v.unregistered) dead.push(chunk[idx].token);
           }
         } else failed += 1;
       });
