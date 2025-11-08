@@ -30,8 +30,8 @@ interface DeviceTokenRow {
   token: string;
   platform?: string | null;
   user_id: string;
-  last_seen?: string | null;   // ISO
-  created_at?: string | null;  // ISO
+  last_seen?: string | null;
+  created_at?: string | null;
 }
 
 type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
@@ -44,7 +44,7 @@ interface PushJobRow {
   body: string;
   data: Record<string, unknown> | null;
   audience: Record<string, unknown> | null;
-  target_user_ids: Uuid[] | number[] | null;
+  target_user_ids: Array<Uuid | number> | null;
   dry_run: boolean;
   scheduled_at: string | null;
   status: JobStatus;
@@ -73,7 +73,6 @@ async function isAdmin() {
   const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, user: null };
-
   const { data, error } = await supabase.rpc('is_current_user_admin');
   if (error || data !== true) return { ok: false as const, user: null };
   return { ok: true as const, user };
@@ -93,8 +92,6 @@ async function getFcmHttpClient(): Promise<{ client: AuthClient; url: string }> 
 
   const envProjectId = process.env.FIREBASE_PROJECT_ID;
   if (!envProjectId) throw new Error('Missing FIREBASE_PROJECT_ID');
-
-  // sanity check: project id must match
   if (creds.project_id && envProjectId && creds.project_id !== envProjectId) {
     throw new Error(`FIREBASE_PROJECT_ID(${envProjectId}) != service_account.project_id(${creds.project_id})`);
   }
@@ -127,51 +124,43 @@ interface FcmV1Message {
   apns?: ApnsConfig;
 }
 
+// 플랫폼/링크 기반 data-only 결정
+function decideWantDataOnly(platform: string | null | undefined, hasLink: boolean) {
+  const p = (platform || '').toLowerCase();
+  if (p === 'android') return true;   // Android: 항상 data-only
+  if (p === 'ios') return hasLink;    // iOS: 링크 있을 때만 data-only
+  return hasLink;
+}
+
 function buildMessage(params: {
   token: string;
   title: string;
   body: string;
-  data?: Record<string, string>;
+  data: Record<string, string>;
   imageUrl?: string;
-  silent?: boolean; // data-only 강제 옵션
+  wantDataOnly: boolean;
 }): FcmV1Message {
-  const { token, title, body, data = {}, imageUrl, silent } = params;
+  const { token, title, body, data, imageUrl, wantDataOnly } = params;
 
-  // 항상 data에 기본 필드 포함 (클릭 핸들링/로깅용)
+  // data에 최소 필드는 항상 포함(포그라운드 처리 안정화)
   const dataPayload: Record<string, string> = {
     ...data,
     title: data.title ?? String(title ?? ''),
     body:  data.body  ?? String(body  ?? ''),
-    ...(imageUrl ? { image: imageUrl } : {}),
-    nid: data.nid ?? String(Date.now()), // 클라 디듀프용
+    nid:   data.nid   ?? String(Date.now()),
   };
 
-  const wantDataOnly = Boolean(silent && silent === true);
-
-  const message: FcmV1Message = {
-    token,
-    data: dataPayload,
-  };
+  const message: FcmV1Message = { token, data: dataPayload };
 
   if (!wantDataOnly) {
-    // 화면에 보이는 notification + 이미지
-    message.notification = {
-      title,
-      body,
-      ...(imageUrl ? { image: imageUrl } : {}),
-    };
+    // imageUrl이 있을 때만 notification.image 세팅
+    message.notification = { title, body, ...(imageUrl ? { image: imageUrl } : {}) };
     message.android = {
       priority: 'HIGH',
-      notification: {
-        channel_id: ANDROID_CHANNEL_ID,
-        ...(imageUrl ? { image: imageUrl } : {}),
-      },
+      notification: { channel_id: ANDROID_CHANNEL_ID, ...(imageUrl ? { image: imageUrl } : {}) },
     };
     message.apns = {
-      headers: {
-        'apns-push-type': 'alert',
-        'apns-priority': '10',
-      },
+      headers: { 'apns-push-type': 'alert', 'apns-priority': '10' },
       payload: {
         aps: {
           alert: { title, body },
@@ -180,16 +169,11 @@ function buildMessage(params: {
       },
     };
   } else {
-    // 진짜 무음 data-only
+    // data-only
     message.android = { priority: 'HIGH' };
     message.apns = {
-      headers: {
-        'apns-push-type': 'background',
-        'apns-priority': '5',
-      },
-      payload: {
-        aps: { 'content-available': 1 },
-      },
+      headers: { 'apns-push-type': 'background', 'apns-priority': '5' },
+      payload: { aps: { 'content-available': 1 } },
     };
   }
 
@@ -207,10 +191,23 @@ async function sendToTokenV1(
   client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string; silent?: boolean },
+  platform: string | null | undefined,
+  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string },
 ): Promise<SendResult> {
   const data = normalizeDataPayload(payload.data ?? {});
-  const message = buildMessage({ token, title: payload.title, body: payload.body, data, imageUrl: payload.imageUrl, silent: payload.silent });
+  const hasLink = Boolean(
+    (typeof data.link_url === 'string' && data.link_url.length > 0) ||
+    (typeof data.url === 'string' && data.url.length > 0)
+  );
+  const wantDataOnly = decideWantDataOnly(platform, hasLink);
+  const message = buildMessage({
+    token,
+    title: payload.title,
+    body: payload.body,
+    data,
+    imageUrl: payload.imageUrl,
+    wantDataOnly,
+  });
 
   try {
     const res = await client.request<{ name?: string }>({ url, method: 'POST', data: { message } });
@@ -229,12 +226,13 @@ async function sendWithRetry(
   client: AuthClient,
   url: string,
   token: string,
-  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string; silent?: boolean },
+  platform: string | null | undefined,
+  payload: { title: string; body: string; data?: Record<string, unknown> | null; imageUrl?: string },
   attempts = 3,
 ): Promise<SendResult> {
   let last: SendResult | null = null;
   for (let i = 0; i < attempts; i++) {
-    const r = await sendToTokenV1(client, url, token, payload);
+    const r = await sendToTokenV1(client, url, token, platform, payload);
     if (r.ok || !r.retryable) return r;
     last = r;
     const backoffMs = 200 * Math.pow(2, i) + Math.floor(Math.random() * 100);
@@ -243,16 +241,21 @@ async function sendWithRetry(
   return last ?? { ok: false, msg: 'unknown error' };
 }
 
-/** 유저 기준 최신(last_seen || created_at) 1개 토큰만 유지 */
-function pickLatestTokenPerUser(rows: DeviceTokenRow[]): string[] {
+/** 최신 토큰 1개/유저 (platform 포함) */
+function pickLatestTokenPerUser(rows: DeviceTokenRow[]): Array<{ token: string; platform?: string | null }> {
   const byUser = new Map<string, DeviceTokenRow>();
   for (const r of rows) {
     const t = new Date(r.last_seen ?? r.created_at ?? 0).getTime();
     const prev = byUser.get(r.user_id);
     if (!prev || t > new Date(prev.last_seen ?? prev.created_at ?? 0).getTime()) byUser.set(r.user_id, r);
   }
-  // 토큰 문자열 기준 중복 제거 + 유효성 필터
-  return Array.from(new Set(Array.from(byUser.values()).map(v => v.token))).filter(t => typeof t === 'string' && t.trim().length > 0);
+  const uniq = new Map<string, { token: string; platform?: string | null }>();
+  for (const v of byUser.values()) {
+    if (typeof v.token === 'string' && v.token.trim().length > 0) {
+      uniq.set(v.token, { token: v.token, platform: v.platform ?? null });
+    }
+  }
+  return Array.from(uniq.values());
 }
 
 export async function POST(request: NextRequest) {
@@ -266,7 +269,7 @@ export async function POST(request: NextRequest) {
       return new NextResponse('title and body are required', { status: 400 });
     }
 
-    // 대상 토큰 수집
+    // 토큰 조회(플랫폼 포함)
     let q = supabaseAdmin
       .from('device_push_tokens')
       .select('token, platform, user_id, last_seen, created_at')
@@ -277,9 +280,9 @@ export async function POST(request: NextRequest) {
     if (tokensErr) throw tokensErr;
 
     const rows = (tokensRows ?? []) as DeviceTokenRow[];
-    const tokens = pickLatestTokenPerUser(rows);
+    const tokens = pickLatestTokenPerUser(rows); // [{ token, platform }]
 
-    // push_jobs 생성
+    // push_jobs 기록(data.image 강제 X)
     const mergedData =
       data && typeof data === 'object'
         ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
@@ -312,14 +315,13 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < tokens.length; i += BATCH) {
       const chunk = tokens.slice(i, i + BATCH);
       const results = await Promise.allSettled(
-        chunk.map((t) =>
-          sendWithRetry(client, url, t, {
+        chunk.map(({ token, platform }) =>
+          sendWithRetry(client, url, token, platform, {
             title,
             body: message,
             data: data ?? null,
             imageUrl,
-            // silent: true  // 필요시 강제 무음
-          }),
+          }, 3),
         ),
       );
       results.forEach((r, idx) => {
@@ -328,7 +330,7 @@ export async function POST(request: NextRequest) {
           if (v.ok) sent += 1;
           else {
             failed += 1;
-            if (v.unregistered) dead.push(chunk[idx]);
+            if (v.unregistered) dead.push(chunk[idx].token);
           }
         } else failed += 1;
       });
