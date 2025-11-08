@@ -147,13 +147,13 @@ function buildMessage(params: {
 }): FcmV1Message {
   const { token, title, body, data = {}, imageUrl, wantDataOnly } = params;
 
-  const imgForData = typeof imageUrl === 'string' ? imageUrl : '';
+  // 항상 data에 기본 필드 포함 (클릭 핸들링/로깅/포그라운드 표시용)
   const dataPayload: Record<string, string> = {
     ...data,
-    title: data['title'] ?? String(title ?? ''),
-    body:  data['body']  ?? String(body  ?? ''),
-    image: ('image' in data) ? String(data['image']) : imgForData,
-    nid:   data['nid']   ?? String(Date.now()),
+    title: data.title ?? String(title ?? ''),
+    body:  data.body  ?? String(body  ?? ''),
+    ...(imageUrl ? { image: imageUrl } : {}),
+    nid: data.nid ?? String(Date.now()), // 클라 디듀프용
   };
 
   const message: FcmV1Message = {
@@ -162,7 +162,7 @@ function buildMessage(params: {
   };
 
   if (!wantDataOnly) {
-    // ⛔️ notification.image/Android image는 “값이 있을 때만” 넣는다
+    // 화면에 보이는 notification + 이미지
     message.notification = {
       title,
       body,
@@ -176,7 +176,10 @@ function buildMessage(params: {
       },
     };
     message.apns = {
-      headers: { 'apns-push-type': 'alert', 'apns-priority': '10' },
+      headers: {
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+      },
       payload: {
         aps: {
           alert: { title, body },
@@ -185,17 +188,21 @@ function buildMessage(params: {
       },
     };
   } else {
-    // data-only (iOS 백그라 권장 헤더)
+    // 진짜 무음 data-only (Android에는 OS 헤더 무시)
     message.android = { priority: 'HIGH' };
     message.apns = {
-      headers: { 'apns-push-type': 'background', 'apns-priority': '5' },
-      payload: { aps: { 'content-available': 1 } },
+      headers: {
+        'apns-push-type': 'background',
+        'apns-priority': '5',
+      },
+      payload: {
+        aps: { 'content-available': 1 },
+      },
     };
   }
 
   return message;
 }
-
 
 function asRetryable(status?: number, code?: string): boolean {
   if (!status && !code) return true;
