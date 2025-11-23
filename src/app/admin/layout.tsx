@@ -46,7 +46,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Sidebar (원래 width/패딩 유지) */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 p-6 text-white bg-gray-800 shadow-md transform ${
+        className={`fixed inset-y-0 left-0 z-30 w-96 p-6 text-white bg-gray-800 shadow-md transform ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex-shrink-0 flex flex-col`}
       >
