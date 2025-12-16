@@ -42,7 +42,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { title, content, author_name, is_published, image_urls, link_url } = await request.json();
+    const {
+      title,
+      content,
+      author_name,
+      is_published,
+      image_urls,
+      link_url,
+      category,
+      arrest_status,
+      reported_to_police,
+      police_station_name,
+      fraud_category,
+      scammer_nickname,
+      scammer_account_number,
+      scammer_phone_number,
+    } = await request.json();
 
     if (!title) {
       return new NextResponse('Title is required', { status: 400 });
@@ -56,8 +71,16 @@ export async function POST(request: NextRequest) {
         author_name: author_name || '관리자',
         is_published,
         image_urls: image_urls && image_urls.length > 0 ? image_urls : null,
-        link_url,
+        link_url: link_url || null,
+        category: category || null,
         user_id: adminUser.id,
+        arrest_status: arrest_status || null,
+        reported_to_police: reported_to_police ?? null,
+        police_station_name: police_station_name || null,
+        fraud_category: fraud_category || null,
+        scammer_nickname: scammer_nickname || null,
+        scammer_account_number: scammer_account_number || null,
+        scammer_phone_number: scammer_phone_number || null,
       })
       .select()
       .single();

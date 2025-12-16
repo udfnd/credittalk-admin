@@ -22,6 +22,13 @@ interface ArrestNewsUpdatePayload {
   link_url?: string | null;
   image_urls?: string[];
   category?: string | null;
+  arrest_status?: 'arrested' | 'active' | null;
+  reported_to_police?: boolean | null;
+  police_station_name?: string | null;
+  fraud_category?: string | null;
+  scammer_nickname?: string | null;
+  scammer_account_number?: string | null;
+  scammer_phone_number?: string | null;
 }
 
 export async function GET(
@@ -58,7 +65,22 @@ export async function POST(
   }
 
   try {
-    const { title, content, author_name, is_published, link_url, image_urls, category } = await request.json();
+    const {
+      title,
+      content,
+      author_name,
+      is_published,
+      link_url,
+      image_urls,
+      category,
+      arrest_status,
+      reported_to_police,
+      police_station_name,
+      fraud_category,
+      scammer_nickname,
+      scammer_account_number,
+      scammer_phone_number,
+    } = await request.json();
 
     const updates: Partial<ArrestNewsUpdatePayload> = {
       title,
@@ -67,6 +89,13 @@ export async function POST(
       is_published,
       link_url,
       category,
+      arrest_status: arrest_status || null,
+      reported_to_police: reported_to_police ?? null,
+      police_station_name: reported_to_police ? police_station_name : null,
+      fraud_category: fraud_category || null,
+      scammer_nickname: scammer_nickname || null,
+      scammer_account_number: scammer_account_number || null,
+      scammer_phone_number: scammer_phone_number || null,
     };
 
     const BUCKET_NAME = 'arrest-news-images';
