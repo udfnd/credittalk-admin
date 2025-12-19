@@ -68,6 +68,10 @@ export default function PushComposerPage() {
   // const [paramsText, setParamsText] = useState<string>('');  // JSON 문자열 (선택)
   // const [paramsError, setParamsError] = useState<string | null>(null);
 
+  // 예약 발송
+  const [isScheduled, setIsScheduled] = useState<boolean>(false);
+  const [scheduledAt, setScheduledAt] = useState<string>('');
+
   // 발송 결과
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -186,18 +190,37 @@ export default function PushComposerPage() {
 
       const hasData = Object.keys(dataPayload).length > 0;
 
+      // 예약 발송 시간 검증
+      let scheduledAtISO: string | null = null;
+      if (isScheduled) {
+        if (!scheduledAt) {
+          setError('예약 발송 시간을 선택해주세요.');
+          setSubmitting(false);
+          return;
+        }
+        const scheduledDate = new Date(scheduledAt);
+        if (scheduledDate.getTime() <= Date.now()) {
+          setError('예약 시간은 현재 시간 이후여야 합니다.');
+          setSubmitting(false);
+          return;
+        }
+        scheduledAtISO = scheduledDate.toISOString();
+      }
+
       const payload: {
         title: string;
         body: string;
         imageUrl?: string;
         targetUserIds?: string[];
         data?: Record<string, unknown>;
+        scheduledAt?: string;
       } = {
         title,
         body,
         ...(imageUrl ? { imageUrl } : {}),
         ...(hasSelection ? { targetUserIds: selectedIds } : {}),
         ...(hasData ? { data: dataPayload } : {}),
+        ...(scheduledAtISO ? { scheduledAt: scheduledAtISO } : {}),
       };
 
       const res = await fetch('/api/push/enqueue', {
@@ -368,6 +391,38 @@ export default function PushComposerPage() {
             <p className="mt-1 text-xs text-gray-500">앱 알림 탭 시 외부 브라우저로 열립니다.</p>
           </div>
 
+          {/* ✅ 예약 발송 */}
+          <div className="md:col-span-2">
+            <div className="flex items-center gap-3 mb-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isScheduled}
+                  onChange={e => {
+                    setIsScheduled(e.target.checked);
+                    if (!e.target.checked) setScheduledAt('');
+                  }}
+                  className="w-4 h-4 rounded border-gray-300"
+                />
+                <span className="text-sm font-medium">예약 발송</span>
+              </label>
+            </div>
+            {isScheduled && (
+              <div className="flex flex-col md:flex-row gap-3 md:items-center">
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={e => setScheduledAt(e.target.value)}
+                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                  className="border rounded px-3 py-2 w-full md:w-auto"
+                />
+                <p className="text-xs text-gray-500">
+                  지정한 시간에 자동으로 발송됩니다. (최소 1분 후부터 예약 가능)
+                </p>
+              </div>
+            )}
+          </div>
+
           {/*/!* ✅ 앱 내 이동 스크린/파라미터 *!/*/}
           {/*<div>*/}
           {/*  <label className="block text-sm font-medium mb-1">앱 스크린 이름 (선택)</label>*/}
@@ -401,7 +456,12 @@ export default function PushComposerPage() {
             disabled={submitting || uploading}
             className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
           >
-            {submitting ? '보내는 중...' : (hasSelection ? '선택 대상에게 보내기' : '전체에게 보내기')}
+            {submitting
+              ? (isScheduled ? '예약 중...' : '보내는 중...')
+              : isScheduled
+                ? (hasSelection ? '선택 대상에게 예약 발송' : '전체에게 예약 발송')
+                : (hasSelection ? '선택 대상에게 보내기' : '전체에게 보내기')
+            }
           </button>
           {error && <span className="ml-3 text-sm text-red-600">{error}</span>}
         </div>

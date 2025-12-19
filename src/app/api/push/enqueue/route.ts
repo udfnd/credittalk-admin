@@ -58,6 +58,7 @@ interface EnqueueRequestBody {
   audience?: Record<string, unknown> | null;
   targetUserIds?: Array<Uuid | number>;
   imageUrl?: string;
+  scheduledAt?: string; // ISO 8601 datetime string
 }
 
 interface FcmErrorShape {
@@ -264,23 +265,25 @@ export async function POST(request: NextRequest) {
 
   try {
     const parsed = (await request.json().catch(() => ({}))) as Partial<EnqueueRequestBody>;
-    const { title, body: message, data, audience, targetUserIds, imageUrl } = parsed;
+    const { title, body: message, data, audience, targetUserIds, imageUrl, scheduledAt } = parsed;
     if (!title || !String(title).trim() || !message || !String(message).trim()) {
       return new NextResponse('title and body are required', { status: 400 });
     }
 
-    // 토큰 조회(플랫폼 포함)
-    let q = supabaseAdmin
-      .from('device_push_tokens')
-      .select('token, platform, user_id, last_seen, created_at')
-      .eq('enabled', true);
-    if (Array.isArray(targetUserIds) && targetUserIds.length) q = q.in('user_id', targetUserIds);
+    // 예약 발송 시간 검증
+    let validScheduledAt: string | null = null;
+    if (scheduledAt) {
+      const scheduledDate = new Date(scheduledAt);
+      if (isNaN(scheduledDate.getTime())) {
+        return new NextResponse('Invalid scheduledAt format', { status: 400 });
+      }
+      if (scheduledDate.getTime() <= Date.now()) {
+        return new NextResponse('scheduledAt must be in the future', { status: 400 });
+      }
+      validScheduledAt = scheduledDate.toISOString();
+    }
 
-    const { data: tokensRows, error: tokensErr } = await q;
-    if (tokensErr) throw tokensErr;
-
-    const rows = (tokensRows ?? []) as DeviceTokenRow[];
-    const tokens = pickLatestTokenPerUser(rows); // [{ token, platform }]
+    const isScheduledPush = !!validScheduledAt;
 
     // push_jobs 기록(data.image 강제 X)
     const mergedData =
@@ -298,13 +301,31 @@ export async function POST(request: NextRequest) {
         audience: Array.isArray(targetUserIds) && targetUserIds.length ? null : (audience ?? { all: true }),
         target_user_ids: Array.isArray(targetUserIds) && targetUserIds.length ? targetUserIds : null,
         dry_run: false,
-        scheduled_at: null,
-        status: 'processing',
+        scheduled_at: validScheduledAt,
+        status: isScheduledPush ? 'queued' : 'processing',
       })
       .select()
       .single();
     if (insErr) throw insErr;
     const jobRow = jobRowRaw as PushJobRow;
+
+    // 예약 발송인 경우 즉시 발송하지 않고 저장만 함
+    if (isScheduledPush) {
+      return NextResponse.json({ ok: true, job: jobRow, scheduled: true });
+    }
+
+    // 토큰 조회(플랫폼 포함)
+    let q = supabaseAdmin
+      .from('device_push_tokens')
+      .select('token, platform, user_id, last_seen, created_at')
+      .eq('enabled', true);
+    if (Array.isArray(targetUserIds) && targetUserIds.length) q = q.in('user_id', targetUserIds);
+
+    const { data: tokensRows, error: tokensErr } = await q;
+    if (tokensErr) throw tokensErr;
+
+    const rows = (tokensRows ?? []) as DeviceTokenRow[];
+    const tokens = pickLatestTokenPerUser(rows); // [{ token, platform }]
 
     // 발송
     const { client, url } = await getFcmHttpClient();

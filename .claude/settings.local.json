@@ -2,7 +2,20 @@
   "permissions": {
     "allow": [
       "mcp__jetbrains__list_directory_tree",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(claude mcp add:*)",
+      "mcp__supabase__list_edge_functions",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__list_extensions",
+      "mcp__supabase__get_project_url",
+      "Bash(supabase functions deploy:*)",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__get_edge_function",
+      "mcp__supabase__get_logs"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }
