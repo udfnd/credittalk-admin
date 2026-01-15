@@ -20,7 +20,6 @@ interface Props {
   eventId?: string;
 }
 
-// 날짜 기반으로 상태와 공개 여부를 자동 계산
 function calculateStatusAndPublished(
   entryStartAt: string,
   entryEndAt: string,
@@ -32,21 +31,16 @@ function calculateStatusAndPublished(
   const announceDate = new Date(winnerAnnounceAt);
 
   if (now < startDate) {
-    // 응모 시작 전
     return { status: 'draft', is_published: false };
   } else if (now >= startDate && now < endDate) {
-    // 응모 진행 중
     return { status: 'active', is_published: true };
   } else if (now >= endDate && now < announceDate) {
-    // 응모 마감, 발표 전
     return { status: 'closed', is_published: true };
   } else {
-    // 발표일 이후
     return { status: 'announced', is_published: true };
   }
 }
 
-// Presigned URL을 사용한 이미지 업로드
 async function uploadFile(file: File): Promise<string> {
   const BUCKET_NAME = 'events-images';
   const fileExtension = file.name.split('.').pop();
@@ -75,9 +69,12 @@ export default function EventForm({ eventId }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string>('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>('');
+
+  // 다중 이미지 상태
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
   const isEdit = !!eventId;
 
   const {
@@ -115,19 +112,19 @@ export default function EventForm({ eventId }: Props) {
         setValue('title', data.title);
         setValue('description', data.description);
         setValue('winner_count', data.winner_count);
-        setValue(
-          'entry_start_at',
-          formatDateTimeLocal(data.entry_start_at)
-        );
+        setValue('entry_start_at', formatDateTimeLocal(data.entry_start_at));
         setValue('entry_end_at', formatDateTimeLocal(data.entry_end_at));
-        setValue(
-          'winner_announce_at',
-          formatDateTimeLocal(data.winner_announce_at)
-        );
-        if (data.image_url) {
-          setImageUrl(data.image_url);
-          setPreviewUrl(data.image_url);
+        setValue('winner_announce_at', formatDateTimeLocal(data.winner_announce_at));
+
+        // 기존 이미지 URL 로드 (image_urls 배열 또는 image_url)
+        let existingUrls: string[] = [];
+        if (data.image_urls && data.image_urls.length > 0) {
+          existingUrls = data.image_urls;
+        } else if (data.image_url) {
+          existingUrls = [data.image_url];
         }
+        setImageUrls(existingUrls);
+        setPreviewUrls(existingUrls);
       }
     } catch (err) {
       alert('이벤트 로드 실패: ' + (err instanceof Error ? err.message : '알 수 없는 오류'));
@@ -139,32 +136,53 @@ export default function EventForm({ eventId }: Props) {
     return date.toISOString().slice(0, 16);
   };
 
-  const handleImageSelect = (file: File) => {
-    setImageFile(file);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+  // 다중 이미지 선택
+  const handleImagesSelect = (files: FileList | null) => {
+    if (!files) return;
+
+    const newFiles = Array.from(files);
+    setNewImageFiles(prev => [...prev, ...newFiles]);
+
+    // 미리보기 URL 생성
+    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
+    setPreviewUrls(prev => [...prev, ...newPreviews]);
   };
 
-  const handleImageClear = () => {
-    if (previewUrl && previewUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(previewUrl);
+  // 이미지 제거
+  const handleImageRemove = (index: number) => {
+    const url = previewUrls[index];
+
+    // blob URL이면 revoke
+    if (url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+      // newImageFiles에서도 제거 (blob URL 인덱스 계산)
+      const blobIndex = previewUrls.slice(0, index).filter(u => u.startsWith('blob:')).length;
+      setNewImageFiles(prev => prev.filter((_, i) => i !== blobIndex));
+    } else {
+      // 기존 URL이면 imageUrls에서 제거
+      setImageUrls(prev => prev.filter(u => u !== url));
     }
-    setImageFile(null);
-    setPreviewUrl(imageUrl); // 기존 이미지로 복원
+
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!imageFile) return imageUrl || null;
-    return uploadFile(imageFile);
+  // 이미지 업로드 및 URL 배열 반환
+  const uploadImages = async (): Promise<string[]> => {
+    // 새 파일들 업로드
+    const uploadedUrls = await Promise.all(
+      newImageFiles.map(file => uploadFile(file))
+    );
+
+    // 기존 URL + 새로 업로드된 URL
+    return [...imageUrls, ...uploadedUrls];
   };
 
   const onSubmit = async (data: EventFormData) => {
     setLoading(true);
     try {
       // 이미지 업로드
-      const uploadedImageUrl = await uploadImage();
+      const uploadedImageUrls = await uploadImages();
 
-      // 날짜 기반으로 상태와 공개 여부 자동 계산
       const { status, is_published } = calculateStatusAndPublished(
         data.entry_start_at,
         data.entry_end_at,
@@ -174,7 +192,8 @@ export default function EventForm({ eventId }: Props) {
       const eventData = {
         title: data.title,
         description: data.description,
-        image_url: uploadedImageUrl,
+        image_url: uploadedImageUrls[0] || null, // 첫 번째 이미지 (하위 호환성)
+        image_urls: uploadedImageUrls, // 전체 이미지 배열
         entry_start_at: new Date(data.entry_start_at).toISOString(),
         entry_end_at: new Date(data.entry_end_at).toISOString(),
         winner_announce_at: new Date(data.winner_announce_at).toISOString(),
@@ -241,49 +260,62 @@ export default function EventForm({ eventId }: Props) {
         )}
       </div>
 
-      {/* 이미지 */}
+      {/* 다중 이미지 업로드 */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          대표 이미지
+          이벤트 이미지 (여러 장 가능)
         </label>
-        <div className="space-y-2">
-          {previewUrl && (
-            <div className="relative inline-block">
-              {previewUrl.startsWith('blob:') ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={previewUrl}
-                  alt="Preview"
-                  className="max-w-xs rounded-lg border"
-                />
-              ) : (
-                <Image
-                  src={previewUrl}
-                  alt="Preview"
-                  width={320}
-                  height={240}
-                  className="max-w-xs rounded-lg border object-cover"
-                  unoptimized
-                />
-              )}
-              <button
-                type="button"
-                onClick={handleImageClear}
-                className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-              >
-                ×
-              </button>
+        <div className="space-y-4">
+          {/* 이미지 미리보기 그리드 */}
+          {previewUrls.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {previewUrls.map((url, index) => (
+                <div key={index} className="relative group">
+                  {url.startsWith('blob:') ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={url}
+                      alt={`Preview ${index + 1}`}
+                      className="w-full h-40 object-cover rounded-lg border"
+                    />
+                  ) : (
+                    <Image
+                      src={url}
+                      alt={`Preview ${index + 1}`}
+                      width={200}
+                      height={160}
+                      className="w-full h-40 object-cover rounded-lg border"
+                      unoptimized
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleImageRemove(index)}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    ×
+                  </button>
+                  {index === 0 && (
+                    <span className="absolute bottom-2 left-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded">
+                      대표 이미지
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
+
+          {/* 파일 선택 */}
           <input
             type="file"
             accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleImageSelect(file);
-            }}
+            multiple
+            onChange={(e) => handleImagesSelect(e.target.files)}
             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
           />
+          <p className="text-sm text-gray-500">
+            여러 장의 이미지를 선택할 수 있습니다. 첫 번째 이미지가 대표 이미지로 사용됩니다.
+          </p>
         </div>
       </div>
 
@@ -349,7 +381,7 @@ export default function EventForm({ eventId }: Props) {
       {/* 안내 문구 */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-700">
-          💡 <strong>상태 및 공개 여부는 날짜에 따라 자동으로 결정됩니다:</strong>
+          <strong>상태 및 공개 여부는 날짜에 따라 자동으로 결정됩니다:</strong>
         </p>
         <ul className="text-sm text-blue-600 mt-2 space-y-1">
           <li>• 응모 시작 전: 초안 (비공개)</li>
