@@ -204,22 +204,22 @@ export default function EventsPage() {
                       </button>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex justify-center gap-2">
+                      <div className="flex flex-col sm:flex-row justify-center gap-1 sm:gap-2">
                         <Link
                           href={`/admin/events/${event.id}/entries`}
-                          className="text-blue-600 hover:underline text-sm"
+                          className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition whitespace-nowrap"
                         >
                           응모자
                         </Link>
                         <Link
                           href={`/admin/events/${event.id}`}
-                          className="text-gray-600 hover:underline text-sm"
+                          className="px-3 py-1.5 bg-gray-500 text-white text-sm rounded-md hover:bg-gray-600 transition whitespace-nowrap"
                         >
                           수정
                         </Link>
                         <button
                           onClick={() => handleDelete(event.id)}
-                          className="text-red-600 hover:underline text-sm"
+                          className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-md hover:bg-red-600 transition whitespace-nowrap"
                         >
                           삭제
                         </button>
