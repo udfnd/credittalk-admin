@@ -11,6 +11,7 @@ interface Event {
   entry_end_at: string;
   winner_announce_at: string;
   winner_count: number;
+  max_entry_count: number | null;
   status: string;
   is_published: boolean;
   created_at: string;
@@ -144,6 +145,9 @@ export default function EventsPage() {
                   당첨인원
                 </th>
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                  응모제한
+                </th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">
                   상태
                 </th>
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">
@@ -176,6 +180,15 @@ export default function EventsPage() {
                     </td>
                     <td className="px-4 py-3 text-center text-sm">
                       {event.winner_count}명
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm">
+                      {event.max_entry_count !== null ? (
+                        <span className="text-orange-600 font-medium">
+                          {event.max_entry_count}명
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">제한없음</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <select

@@ -14,6 +14,7 @@ interface EventFormData {
   entry_end_at: string;
   winner_announce_at: string;
   winner_count: number;
+  max_entry_count: number | null;
 }
 
 interface Props {
@@ -81,6 +82,7 @@ export default function EventForm({ eventId }: Props) {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<EventFormData>({
     defaultValues: {
@@ -90,8 +92,11 @@ export default function EventForm({ eventId }: Props) {
       entry_end_at: '',
       winner_announce_at: '',
       winner_count: 1,
+      max_entry_count: null,
     },
   });
+
+  const [hasMaxEntry, setHasMaxEntry] = useState(false);
 
   useEffect(() => {
     if (eventId) {
@@ -115,6 +120,12 @@ export default function EventForm({ eventId }: Props) {
         setValue('entry_start_at', formatDateTimeLocal(data.entry_start_at));
         setValue('entry_end_at', formatDateTimeLocal(data.entry_end_at));
         setValue('winner_announce_at', formatDateTimeLocal(data.winner_announce_at));
+
+        // 최대 응모 인원 로드
+        if (data.max_entry_count !== null) {
+          setHasMaxEntry(true);
+          setValue('max_entry_count', data.max_entry_count);
+        }
 
         // 기존 이미지 URL 로드 (image_urls 배열 또는 image_url)
         let existingUrls: string[] = [];
@@ -198,6 +209,7 @@ export default function EventForm({ eventId }: Props) {
         entry_end_at: new Date(data.entry_end_at).toISOString(),
         winner_announce_at: new Date(data.winner_announce_at).toISOString(),
         winner_count: data.winner_count,
+        max_entry_count: hasMaxEntry ? data.max_entry_count : null,
         status,
         is_published,
         updated_at: new Date().toISOString(),
@@ -361,21 +373,66 @@ export default function EventForm({ eventId }: Props) {
         />
       </div>
 
-      {/* 당첨 인원 */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          당첨 인원 <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="number"
-          min="1"
-          {...register('winner_count', {
-            required: '당첨 인원을 입력해주세요.',
-            min: { value: 1, message: '최소 1명 이상이어야 합니다.' },
-          })}
-          className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        />
-        <span className="ml-2 text-gray-600">명</span>
+      {/* 당첨 인원 & 응모 인원 */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            당첨 인원 <span className="text-red-500">*</span>
+          </label>
+          <div className="flex items-center">
+            <input
+              type="number"
+              min="1"
+              {...register('winner_count', {
+                required: '당첨 인원을 입력해주세요.',
+                min: { value: 1, message: '최소 1명 이상이어야 합니다.' },
+              })}
+              className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <span className="ml-2 text-gray-600">명</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            응모 인원 제한
+          </label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasMaxEntry}
+                onChange={(e) => {
+                  setHasMaxEntry(e.target.checked);
+                  if (!e.target.checked) {
+                    setValue('max_entry_count', null);
+                  }
+                }}
+                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              />
+              <span className="ml-2 text-sm text-gray-600">제한 설정</span>
+            </label>
+            {hasMaxEntry && (
+              <div className="flex items-center">
+                <input
+                  type="number"
+                  min="1"
+                  {...register('max_entry_count', {
+                    min: { value: 1, message: '최소 1명 이상이어야 합니다.' },
+                  })}
+                  className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="제한 없음"
+                />
+                <span className="ml-2 text-gray-600">명</span>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {hasMaxEntry
+              ? '설정한 인원이 응모하면 응모가 마감됩니다.'
+              : '체크하면 최대 응모 가능 인원을 설정할 수 있습니다.'}
+          </p>
+        </div>
       </div>
 
       {/* 안내 문구 */}
@@ -389,6 +446,12 @@ export default function EventForm({ eventId }: Props) {
           <li>• 응모 마감 후 ~ 발표 전: 마감 (공개)</li>
           <li>• 발표일 이후: 발표완료 (공개)</li>
         </ul>
+        {hasMaxEntry && (
+          <p className="text-sm text-orange-600 mt-3">
+            <strong>응모 인원 제한:</strong> 설정한 인원이 모두 응모하면 &apos;인원 마감&apos; 상태가 됩니다.
+            이후 응모 시도한 사용자에게는 다음 이벤트 우선권이 부여됩니다.
+          </p>
+        )}
       </div>
 
       {/* 버튼 */}
