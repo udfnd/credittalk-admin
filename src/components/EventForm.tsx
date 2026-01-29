@@ -82,7 +82,6 @@ export default function EventForm({ eventId }: Props) {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<EventFormData>({
     defaultValues: {
