@@ -19,6 +19,7 @@ interface Event {
   title: string;
   winner_count: number;
   status: string;
+  winner_numbers: number[] | null;
 }
 
 interface Props {
@@ -32,6 +33,9 @@ export default function EventEntriesPage({ params }: Props) {
   const [loading, setLoading] = useState(true);
   const [drawing, setDrawing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [winnerInput, setWinnerInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingWinners, setEditingWinners] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -41,17 +45,15 @@ export default function EventEntriesPage({ params }: Props) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 이벤트 정보 조회
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('id, title, winner_count, status')
+        .select('id, title, winner_count, status, winner_numbers')
         .eq('id', id)
         .single();
 
       if (eventError) throw eventError;
       setEvent(eventData);
 
-      // 응모자 목록 조회
       const { data: entriesData, error: entriesError } = await supabase.rpc(
         'get_event_entries_admin',
         { p_event_id: parseInt(id) }
@@ -98,6 +100,64 @@ export default function EventEntriesPage({ params }: Props) {
     }
   };
 
+  const handleSaveWinnerNumbers = async () => {
+    if (!event) return;
+
+    const numbers = winnerInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== '')
+      .map((s) => parseInt(s))
+      .filter((n) => !isNaN(n));
+
+    if (numbers.length === 0) {
+      alert('당첨 번호를 입력해주세요.');
+      return;
+    }
+
+    const duplicates = numbers.filter((n, i) => numbers.indexOf(n) !== i);
+    if (duplicates.length > 0) {
+      alert(`중복된 번호가 있습니다: ${[...new Set(duplicates)].join(', ')}`);
+      return;
+    }
+
+    if (!confirm(`당첨 번호를 [${numbers.join(', ')}](으)로 설정하시겠습니까?`)) return;
+
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.rpc('update_winner_numbers', {
+        p_event_id: parseInt(id),
+        p_numbers: numbers,
+      });
+
+      if (error) throw error;
+
+      if (data && !data.success) {
+        alert(data.message || '저장 실패');
+        if (data.invalid_numbers) {
+          alert(`유효하지 않은 번호: ${data.invalid_numbers.join(', ')}`);
+        }
+      } else {
+        alert(`당첨 번호가 저장되었습니다. (${numbers.length}명)`);
+        setEditingWinners(false);
+        fetchData();
+      }
+    } catch (err) {
+      alert('저장 중 오류 발생: ' + (err instanceof Error ? err.message : '알 수 없는 오류'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEditingWinners = () => {
+    const currentWinners = entries
+      .filter((e) => e.is_winner)
+      .map((e) => e.entry_number)
+      .sort((a, b) => a - b);
+    setWinnerInput(currentWinners.join(', '));
+    setEditingWinners(true);
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ko-KR', {
       year: 'numeric',
@@ -130,6 +190,10 @@ export default function EventEntriesPage({ params }: Props) {
   }
 
   const winnerCount = entries.filter((e) => e.is_winner).length;
+  const currentWinnerNumbers = entries
+    .filter((e) => e.is_winner)
+    .map((e) => e.entry_number)
+    .sort((a, b) => a - b);
 
   return (
     <div className="p-6">
@@ -167,6 +231,77 @@ export default function EventEntriesPage({ params }: Props) {
           )}
         </div>
       </div>
+
+      {/* 당첨번호 관리 섹션 */}
+      {entries.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-lg font-semibold">당첨번호 관리</h2>
+            {!editingWinners && (
+              <button
+                onClick={startEditingWinners}
+                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                {currentWinnerNumbers.length > 0 ? '수정' : '직접 입력'}
+              </button>
+            )}
+          </div>
+
+          {currentWinnerNumbers.length > 0 && !editingWinners && (
+            <div className="flex flex-wrap gap-2">
+              {currentWinnerNumbers.map((num) => (
+                <span
+                  key={num}
+                  className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-mono font-medium"
+                >
+                  #{num}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {currentWinnerNumbers.length === 0 && !editingWinners && (
+            <p className="text-gray-400 text-sm">
+              아직 당첨번호가 설정되지 않았습니다. 추첨을 실행하거나 직접 입력해주세요.
+            </p>
+          )}
+
+          {editingWinners && (
+            <div>
+              <div className="mb-2">
+                <label className="block text-sm text-gray-600 mb-1">
+                  당첨 응모번호 (쉼표로 구분)
+                </label>
+                <input
+                  type="text"
+                  value={winnerInput}
+                  onChange={(e) => setWinnerInput(e.target.value)}
+                  placeholder="예: 3, 15, 27, 42"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mb-3">
+                유효한 응모번호만 입력 가능합니다. (1 ~ {entries.length})
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveWinnerNumbers}
+                  disabled={saving}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 text-sm"
+                >
+                  {saving ? '저장 중...' : '저장'}
+                </button>
+                <button
+                  onClick={() => setEditingWinners(false)}
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition text-sm"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {entries.length === 0 ? (
         <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
