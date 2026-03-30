@@ -32,7 +32,7 @@ function calculateStatusAndPublished(
   const announceDate = new Date(winnerAnnounceAt);
 
   if (now < startDate) {
-    return { status: 'draft', is_published: false };
+    return { status: 'active', is_published: true };
   } else if (now >= startDate && now < endDate) {
     return { status: 'active', is_published: true };
   } else if (now >= endDate && now < announceDate) {
@@ -440,7 +440,7 @@ export default function EventForm({ eventId }: Props) {
           <strong>상태 및 공개 여부는 날짜에 따라 자동으로 결정됩니다:</strong>
         </p>
         <ul className="text-sm text-blue-600 mt-2 space-y-1">
-          <li>• 응모 시작 전: 초안 (비공개)</li>
+          <li>• 응모 시작 전: 진행중 (공개)</li>
           <li>• 응모 진행 중: 진행중 (공개)</li>
           <li>• 응모 마감 후 ~ 발표 전: 마감 (공개)</li>
           <li>• 발표일 이후: 발표완료 (공개)</li>
