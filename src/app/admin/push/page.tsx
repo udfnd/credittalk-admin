@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
 
@@ -53,6 +54,13 @@ type SearchItem = {
   };
 };
 
+
+type EventItem = {
+  id: number;
+  title: string;
+  status: string;
+};
+
 export default function PushComposerPage() {
   // ── 발송 폼 상태 ─────────────────────────────────────────────
   const [title, setTitle] = useState<string>('');
@@ -64,9 +72,10 @@ export default function PushComposerPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [linkUrl, setLinkUrl] = useState<string>('');        // 외부 URL (선택)
-  // const [screen, setScreen] = useState<string>('');          // 앱 내 이동 스크린 이름 (선택)
-  // const [paramsText, setParamsText] = useState<string>('');  // JSON 문자열 (선택)
-  // const [paramsError, setParamsError] = useState<string | null>(null);
+
+  // 이벤트 연결
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
 
   // 예약 발송
   const [isScheduled, setIsScheduled] = useState<boolean>(false);
@@ -85,6 +94,20 @@ export default function PushComposerPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]); // auth user uuid들
 
   const hasSelection = selectedIds.length > 0;
+
+  // 이벤트 목록 로드
+  useEffect(() => {
+    const fetchEvents = async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('events')
+        .select('id, title, status')
+        .in('status', ['active', 'draft'])
+        .order('created_at', { ascending: false });
+      if (data) setEvents(data);
+    };
+    fetchEvents();
+  }, []);
 
   const visibleResults = useMemo(() => results.slice(0, 50), [results]);
 
@@ -185,8 +208,10 @@ export default function PushComposerPage() {
       const dataPayload: Record<string, unknown> = {};
       if (imageUrl) dataPayload.image = imageUrl;
       if (linkUrl.trim()) dataPayload.link_url = linkUrl.trim();
-      // if (screen.trim()) dataPayload.screen = screen.trim();
-      // if (parsedParams !== undefined) dataPayload.params = parsedParams;
+      if (selectedEventId) {
+        dataPayload.screen = 'EventDetail';
+        dataPayload.params = JSON.stringify({ eventId: Number(selectedEventId) });
+      }
 
       const hasData = Object.keys(dataPayload).length > 0;
 
@@ -423,31 +448,25 @@ export default function PushComposerPage() {
             )}
           </div>
 
-          {/*/!* ✅ 앱 내 이동 스크린/파라미터 *!/*/}
-          {/*<div>*/}
-          {/*  <label className="block text-sm font-medium mb-1">앱 스크린 이름 (선택)</label>*/}
-          {/*  <input*/}
-          {/*    className="border rounded px-3 py-2 w-full"*/}
-          {/*    placeholder="예) NoticeDetail"*/}
-          {/*    value={screen}*/}
-          {/*    onChange={e => setScreen(e.target.value)}*/}
-          {/*  />*/}
-          {/*  <p className="mt-1 text-xs text-gray-500">앱 내부 특정 화면으로 이동하려면 스크린 이름을 적어주세요.</p>*/}
-          {/*</div>*/}
-
-          {/*<div className="md:col-span-2">*/}
-          {/*  <label className="block text-sm font-medium mb-1">스크린 파라미터(JSON, 선택)</label>*/}
-          {/*  <textarea*/}
-          {/*    className="border rounded px-3 py-2 w-full min-h-[80px]"*/}
-          {/*    placeholder='예) { "noticeId": 123 }'*/}
-          {/*    value={paramsText}*/}
-          {/*    onChange={e => setParamsText(e.target.value)}*/}
-          {/*  />*/}
-          {/*  {paramsError && <p className="text-xs text-red-600 mt-1">{paramsError}</p>}*/}
-          {/*  <p className="mt-1 text-xs text-gray-500">*/}
-          {/*    JSON 형식으로 입력하세요. (예: {"{ \"noticeId\": 123 }"})*/}
-          {/*  </p>*/}
-          {/*</div>*/}
+          {/* 이벤트 연결 */}
+          <div>
+            <label className="block text-sm font-medium mb-1">이벤트 연결 (선택)</label>
+            <select
+              className="border rounded px-3 py-2 w-full"
+              value={selectedEventId}
+              onChange={e => setSelectedEventId(e.target.value)}
+            >
+              <option value="">선택 안함</option>
+              {events.map(ev => (
+                <option key={ev.id} value={String(ev.id)}>
+                  [{ev.status === 'active' ? '진행중' : '초안'}] {ev.title}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              이벤트를 선택하면 푸시 알림 클릭 시 해당 이벤트 상세 화면으로 이동합니다.
+            </p>
+          </div>
         </div>
 
         <div className="mt-6">
