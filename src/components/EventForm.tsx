@@ -143,7 +143,9 @@ export default function EventForm({ eventId }: Props) {
 
   const formatDateTimeLocal = (isoString: string) => {
     const date = new Date(isoString);
-    return date.toISOString().slice(0, 16);
+    const offset = date.getTimezoneOffset() * 60 * 1000;
+    const localDate = new Date(date.getTime() - offset);
+    return localDate.toISOString().slice(0, 16);
   };
 
   // 다중 이미지 선택
