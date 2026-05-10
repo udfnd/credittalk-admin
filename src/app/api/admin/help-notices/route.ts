@@ -34,7 +34,15 @@ export async function POST(req: NextRequest) {
   if (!auth.ok || !auth.user) return new NextResponse('Unauthorized', { status: 401 });
 
   const payload = await req.json().catch(() => ({}));
-  const { title, body, pinned = false, pinned_until = null, is_published = true } = payload || {};
+  const {
+    title,
+    body,
+    pinned = false,
+    pinned_until = null,
+    is_published = true,
+    image_urls = [],
+    link_url = null,
+  } = payload || {};
 
   if (!title || !body) return new NextResponse('title/body required', { status: 400 });
 
@@ -48,6 +56,8 @@ export async function POST(req: NextRequest) {
       pinned_at: pinned ? new Date().toISOString() : null,
       pinned_until,
       is_published,
+      image_urls: Array.isArray(image_urls) && image_urls.length > 0 ? image_urls : null,
+      link_url: link_url || null,
     })
     .select()
     .single();
