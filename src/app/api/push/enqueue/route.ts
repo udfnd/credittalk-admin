@@ -126,11 +126,15 @@ interface FcmV1Message {
 }
 
 // 플랫폼/링크 기반 data-only 결정
+// Android: notification+data 하이브리드로 발송 → OS가 백그라운드/종료 상태에서 직접 표시(삼성 절전/딥슬립
+//   에서도 안정 전달) + 탭은 FCM 표준 경로(onNotificationOpenedApp/getInitialNotification)로 처리.
+//   (과거 'Android 항상 data-only'는 삼성 S24/S25에서 탭 시 notifee+AsyncStorage 헤드리스 경로 유실로
+//    "탭해도 페이지로 안 넘어감" 버그를 유발 → send-fcm-v1-push와 동일하게 하이브리드로 통일)
+// iOS: 링크가 있으면 data-only(앱이 딥링크 처리), 없으면 notification(OS 표시).
 function decideWantDataOnly(platform: string | null | undefined, hasLink: boolean) {
   const p = (platform || '').toLowerCase();
-  if (p === 'android') return true;   // Android: 항상 data-only
   if (p === 'ios') return hasLink;    // iOS: 링크 있을 때만 data-only
-  return hasLink;
+  return false;                       // Android/미상: 하이브리드(notification+data)
 }
 
 function buildMessage(params: {

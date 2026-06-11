@@ -419,7 +419,9 @@ Deno.serve(async req => {
           const batchResults = await Promise.allSettled(
             chunk.map(({ token, platform }) => {
               const p = (platform || '').toLowerCase();
-              const wantDataOnly = p === 'android' || (p === 'ios' && hasLink);
+              // Android: notification+data 하이브리드(삼성 절전에서도 OS 직접 표시 + 탭은 FCM 표준 경로).
+              // iOS: 링크 있을 때만 data-only. (send-fcm-v1-push / enqueue 라우트와 동일 규칙)
+              const wantDataOnly = (!job.title && !job.body) || (p === 'ios' && hasLink);
 
               return sendWithRetry({
                 accessToken,
