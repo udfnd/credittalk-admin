@@ -130,18 +130,20 @@ function sanitizeImageUrl(value?: string | null) {
   return trimmed;
 }
 
-function latestPerUser(rows: TokenRow[]) {
-  const byUser = new Map<string, TokenRow>();
+// 유저당 "최신 토큰 1개"만 발송하던 과거 정책은 다중 기기/설치 계정(어드민 등)에서
+// 마지막으로 앱을 연 설치본이 알림을 독점하는 미수신 사고를 냈다.
+// → 최근 활성(60일 내 등록/갱신) 토큰 전체에 발송. 죽은 토큰은 FCM UNREGISTERED
+//   응답으로 자동 비활성화되므로 시간이 지나면 실기기만 남는다.
+const ACTIVE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000; // 60일
+
+function activeTokens(rows: TokenRow[]) {
+  const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+  const uniq = new Map<string, { token: string; platform?: string | null }>();
   for (const r of rows) {
     const t = new Date(r.last_seen ?? r.created_at ?? 0).getTime();
-    const prev = byUser.get(r.user_id);
-    if (!prev || t > new Date(prev.last_seen ?? prev.created_at ?? 0).getTime())
-      byUser.set(r.user_id, r);
-  }
-  const uniq = new Map<string, { token: string; platform?: string | null }>();
-  for (const v of byUser.values()) {
-    if (typeof v.token === 'string' && v.token.trim().length > 0) {
-      uniq.set(v.token, { token: v.token, platform: v.platform ?? null });
+    if (!Number.isFinite(t) || t < cutoff) continue;
+    if (typeof r.token === 'string' && r.token.trim().length > 0) {
+      uniq.set(r.token, { token: r.token, platform: r.platform ?? null });
     }
   }
   return Array.from(uniq.values());
@@ -388,7 +390,7 @@ Deno.serve(async req => {
         const { rows } = await selectTokens(
           audienceAll ? null : job.target_user_ids
         );
-        const tokens = latestPerUser(rows);
+        const tokens = activeTokens(rows);
 
         if (!tokens.length) {
           await supabaseAdmin
