@@ -140,7 +140,7 @@ export default function ManageUsersPage() {
                     className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={user.is_admin}
                   >
-                    차단
+                    회원 삭제
                   </button>
                 </td>
               </tr>
