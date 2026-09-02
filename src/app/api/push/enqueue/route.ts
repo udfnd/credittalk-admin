@@ -8,6 +8,8 @@ import { GoogleAuth, type AuthClient } from 'google-auth-library';
 export const runtime = 'nodejs';
 
 const ANDROID_CHANNEL_ID = 'push_default_v2';
+// 기존 앱도 가진 launcher action을 명시해 하위 버전 탭 호환성을 유지한다.
+const ANDROID_CLICK_ACTION = 'android.intent.action.MAIN';
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
 type Uuid = string;
@@ -114,7 +116,16 @@ type SendResult =
   | { ok: false; status?: number; code?: string; msg?: string; unregistered?: boolean; retryable?: boolean };
 
 type NotificationPayload = { title?: string; body?: string; image?: string };
-type AndroidConfig = { priority?: 'NORMAL' | 'HIGH'; notification?: { channel_id?: string; image?: string } };
+type AndroidConfig = {
+  priority?: 'NORMAL' | 'HIGH';
+  collapse_key?: string;
+  notification?: {
+    channel_id?: string;
+    image?: string;
+    tag?: string;
+    click_action?: string;
+  };
+};
 type ApnsConfig = { headers?: Record<string, string>; payload?: { aps?: Record<string, unknown> } };
 
 interface FcmV1Message {
@@ -162,7 +173,13 @@ function buildMessage(params: {
     message.notification = { title, body, ...(imageUrl ? { image: imageUrl } : {}) };
     message.android = {
       priority: 'HIGH',
-      notification: { channel_id: ANDROID_CHANNEL_ID, ...(imageUrl ? { image: imageUrl } : {}) },
+      collapse_key: dataPayload.nid,
+      notification: {
+        channel_id: ANDROID_CHANNEL_ID,
+        tag: dataPayload.nid,
+        click_action: ANDROID_CLICK_ACTION,
+        ...(imageUrl ? { image: imageUrl } : {}),
+      },
     };
     message.apns = {
       headers: { 'apns-push-type': 'alert', 'apns-priority': '10' },
@@ -294,10 +311,18 @@ export async function POST(request: NextRequest) {
     const isScheduledPush = !!validScheduledAt;
 
     // push_jobs 기록(data.image 강제 X)
-    const mergedData =
-      data && typeof data === 'object'
-        ? { ...data, ...(imageUrl ? { image: imageUrl } : {}) }
-        : imageUrl ? { image: imageUrl } : null;
+    // nid는 토큰별 buildMessage(Date.now())가 아니라 job 생성 시 한 번만
+    // 만든다. 그래야 모든 수신 기기의 data/collapse/tag가 같고,
+    // OneUI 탭 장애를 해당 push_jobs 행으로 정확히 연결할 수 있다.
+    const suppliedNid =
+      data && typeof data.nid === 'string' && data.nid.trim()
+        ? data.nid.trim()
+        : null;
+    const mergedData: Record<string, unknown> = {
+      ...(data && typeof data === 'object' ? data : {}),
+      nid: suppliedNid ?? `push_${crypto.randomUUID()}`,
+      ...(imageUrl ? { image: imageUrl } : {}),
+    };
 
     const { data: jobRowRaw, error: insErr } = await supabaseAdmin
       .from('push_jobs')
@@ -348,7 +373,7 @@ export async function POST(request: NextRequest) {
           sendWithRetry(client, url, token, platform, {
             title,
             body: message,
-            data: data ?? null,
+            data: mergedData,
             imageUrl,
           }, 3),
         ),

@@ -15,6 +15,8 @@ const SERVICE_ACCOUNT = JSON.parse(
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ANDROID_CHANNEL_ID = 'push_default_v2';
+// 기존 앱도 가진 launcher action을 명시해 하위 버전 탭 호환성을 유지한다.
+const ANDROID_CLICK_ACTION = 'android.intent.action.MAIN';
 
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   global: { headers: { Authorization: `Bearer ${SERVICE_ROLE_KEY}` } },
@@ -224,6 +226,7 @@ function buildMessage(params: {
           notification: {
             channel_id: ANDROID_CHANNEL_ID,
             tag: nid,
+            click_action: ANDROID_CLICK_ACTION,
             ...(cleanImage ? { image: cleanImage } : {}),
           },
         }
@@ -404,7 +407,13 @@ Deno.serve(async req => {
           continue;
         }
 
-        const dataStr = normalizeDataPayload(job.data ?? {});
+        const normalizedData = normalizeDataPayload(job.data ?? {});
+        // 레거시 예약 job에 nid가 없어도 job 단위로 한 개를 고정해
+        // 토큰별 Date.now() id 분산을 막는다.
+        const dataStr: Record<string, string> = {
+          ...normalizedData,
+          nid: normalizedData.nid || `push_job_${job.id}`,
+        };
         const imageUrl = sanitizeImageUrl(job.data?.image as string | undefined);
         const hasLink =
           (typeof dataStr.link_url === 'string' && dataStr.link_url.length > 0) ||
