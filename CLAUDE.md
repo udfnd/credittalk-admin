@@ -85,8 +85,8 @@ src/
 
 Required in `.env.local`:
 - `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Public anon key
-- `SUPABASE_SERVICE_ROLE_KEY` - Admin operations (secret)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Public publishable key (legacy variable name)
+- `SUPABASE_SECRET_KEY` - Admin operations (server-only secret key)
 - `FIREBASE_PROJECT_ID` - Firebase project (for push notifications)
 - `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` - Firebase service account (secret)
 

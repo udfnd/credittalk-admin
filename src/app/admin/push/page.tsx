@@ -61,6 +61,20 @@ type EventItem = {
   status: string;
 };
 
+function normalizeLinkUrl(value: string): string {
+  let candidate = value.trim();
+  if (!candidate) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) candidate = `https://${candidate}`;
+  const parsed = new URL(candidate);
+  if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) {
+    throw new Error('링크는 http 또는 https URL이어야 합니다.');
+  }
+  if (parsed.username || parsed.password || candidate.length > 2048) {
+    throw new Error('허용되지 않는 링크 형식입니다.');
+  }
+  return parsed.toString();
+}
+
 export default function PushComposerPage() {
   // ── 발송 폼 상태 ─────────────────────────────────────────────
   const [title, setTitle] = useState<string>('');
@@ -190,6 +204,14 @@ export default function PushComposerPage() {
       setSubmitting(true);
       setError(null);
       setResult(null);
+      if (!title.trim() || !body.trim()) {
+        setError('제목과 본문을 모두 입력해주세요.');
+        return;
+      }
+      if (linkUrl.trim() && selectedEventId) {
+        setError('외부 링크와 이벤트 화면 이동은 동시에 지정할 수 없습니다.');
+        return;
+      }
       // setParamsError(null);
 
       // paramsText가 있으면 JSON 파싱 검증
@@ -207,7 +229,14 @@ export default function PushComposerPage() {
       // data 페이로드 구성 (비어있으면 생략)
       const dataPayload: Record<string, unknown> = {};
       if (imageUrl) dataPayload.image = imageUrl;
-      if (linkUrl.trim()) dataPayload.link_url = linkUrl.trim();
+      if (linkUrl.trim()) {
+        try {
+          dataPayload.link_url = normalizeLinkUrl(linkUrl);
+        } catch (linkError) {
+          setError(linkError instanceof Error ? linkError.message : '링크 형식이 올바르지 않습니다.');
+          return;
+        }
+      }
       if (selectedEventId) {
         dataPayload.screen = 'EventDetail';
         dataPayload.params = JSON.stringify({ eventId: Number(selectedEventId) });
@@ -240,8 +269,8 @@ export default function PushComposerPage() {
         data?: Record<string, unknown>;
         scheduledAt?: string;
       } = {
-        title,
-        body,
+        title: title.trim(),
+        body: body.trim(),
         ...(imageUrl ? { imageUrl } : {}),
         ...(hasSelection ? { targetUserIds: selectedIds } : {}),
         ...(hasData ? { data: dataPayload } : {}),
@@ -413,7 +442,7 @@ export default function PushComposerPage() {
               value={linkUrl}
               onChange={e => setLinkUrl(e.target.value)}
             />
-            <p className="mt-1 text-xs text-gray-500">앱 알림 탭 시 외부 브라우저로 열립니다.</p>
+            <p className="mt-1 text-xs text-gray-500">http(s)만 허용되며, 주소에 스킴이 없으면 https로 보정됩니다.</p>
           </div>
 
           {/* ✅ 예약 발송 */}

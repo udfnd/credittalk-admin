@@ -1,0 +1,4 @@
+[functions.process-scheduled-push]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/process-scheduled-push/index.ts"
